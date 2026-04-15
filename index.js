@@ -1,7 +1,9 @@
 const config = window.dashboardConfig || {};
 const telemetryEndpoint = config.telemetryEndpoint || "telemetry.php?format=json";
 const refreshIntervalMs = Number(config.refreshIntervalMs) || 5000;
+const telemetryRequestTimeoutMs = Number(config.telemetryRequestTimeoutMs) || Math.max(2500, refreshIntervalMs - 500);
 const activeTabStorageKey = "ets2-dashboard-active-tab";
+const mapPreferencesStorageKey = "ets2-dashboard-map-preferences";
 const tabsRoot = document.querySelector(".section-tabs");
 const routePlannerAverageKph = 63;
 const routePlannerRealTimeScale = 17.5;
@@ -128,6 +130,55 @@ const heroMapZoomButtons = Array.from(document.querySelectorAll("[data-hero-map-
 let refreshTimer = null;
 let tileMapRetryTimer = null;
 let latestTelemetryData = null;
+let telemetryRequestInFlight = false;
+let telemetryAbortController = null;
+let telemetryTimeoutHandle = null;
+let hasLoadedMapPreferences = false;
+
+function persistMapPreferences() {
+    try {
+        window.localStorage.setItem(mapPreferencesStorageKey, JSON.stringify({
+            worldZoom: tileMapState.zoom,
+            worldFollowTruck: tileMapState.followTruck,
+            heroZoom: heroMapState.zoom,
+            heroFollowTruck: heroMapState.followTruck,
+        }));
+    } catch (error) {
+        // Ignore storage failures to keep runtime behavior stable.
+    }
+}
+
+function loadMapPreferences() {
+    try {
+        const raw = window.localStorage.getItem(mapPreferencesStorageKey);
+        if (!raw) {
+            return;
+        }
+
+        const parsed = JSON.parse(raw);
+        hasLoadedMapPreferences = true;
+        const worldZoom = getNumber(parsed?.worldZoom);
+        const heroZoom = getNumber(parsed?.heroZoom);
+
+        if (worldZoom !== null) {
+            tileMapState.zoom = Math.floor(worldZoom);
+        }
+
+        if (heroZoom !== null) {
+            heroMapState.zoom = Math.floor(heroZoom);
+        }
+
+        if (typeof parsed?.worldFollowTruck === "boolean") {
+            tileMapState.followTruck = parsed.worldFollowTruck;
+        }
+
+        if (typeof parsed?.heroFollowTruck === "boolean") {
+            heroMapState.followTruck = parsed.heroFollowTruck;
+        }
+    } catch (error) {
+        // Ignore malformed data and fall back to defaults.
+    }
+}
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -775,19 +826,20 @@ async function initializeTileMap() {
                 tileMapState.availableTileMaxZoom = await detectAvailableMaxZoom(normalized);
                 tileMapState.overzoomSteps = Math.max(0, Math.floor(getNumber(tileMapConfig.overzoomSteps) ?? 2));
                 tileMapState.maxZoom = tileMapState.availableTileMaxZoom + tileMapState.overzoomSteps;
-                tileMapState.zoom = Math.max(normalized.minZoom, Math.min(tileMapState.maxZoom, Math.floor((normalized.minZoom + tileMapState.availableTileMaxZoom) / 2)));
+                const worldDefaultZoom = Math.floor((normalized.minZoom + tileMapState.availableTileMaxZoom) / 2);
+                tileMapState.zoom = Math.max(normalized.minZoom, Math.min(tileMapState.maxZoom, hasLoadedMapPreferences ? tileMapState.zoom : worldDefaultZoom));
                 if (tileMapState.zoom > tileMapState.maxZoom) {
                     tileMapState.zoom = tileMapState.maxZoom;
                 }
                 heroMapState.minZoom = tileMapState.minZoom;
                 heroMapState.maxZoom = tileMapState.maxZoom;
                 heroMapState.defaultZoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, tileMapState.availableTileMaxZoom - 1));
-                heroMapState.zoom = heroMapState.defaultZoom;
-                heroMapState.followTruck = true;
-                heroMapState.manualCenter = null;
+                heroMapState.zoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, hasLoadedMapPreferences ? heroMapState.zoom : heroMapState.defaultZoom));
+                setHeroMapFollowTruck(heroMapState.followTruck);
                 tileMapState.sourceLabel = normalized.sourceLabel;
 
                 updateMapModeLabel();
+                persistMapPreferences();
                 if (latestTelemetryData) {
                     renderMap(latestTelemetryData);
                 }
@@ -1000,7 +1052,7 @@ function renderHeroTileMap(centerX, centerY, markerHeadingDeg) {
     elements.heroMapMarker.style.setProperty("--hero-map-marker-heading", `${markerHeadingDeg}deg`);
 }
 
-function setHeroMapFollowTruck(shouldFollow) {
+function setHeroMapFollowTruck(shouldFollow, persistPreference = true) {
     heroMapState.followTruck = shouldFollow;
     if (shouldFollow) {
         heroMapState.manualCenter = null;
@@ -1008,6 +1060,10 @@ function setHeroMapFollowTruck(shouldFollow) {
 
     if (elements.heroMapCenter) {
         elements.heroMapCenter.disabled = !tileMapState.initialized || heroMapState.followTruck;
+    }
+
+    if (persistPreference) {
+        persistMapPreferences();
     }
 }
 
@@ -1071,7 +1127,7 @@ function handleHeroMapPointerEnd(event) {
     }
 }
 
-function setMapFollowTruck(shouldFollow) {
+function setMapFollowTruck(shouldFollow, persistPreference = true) {
     tileMapState.followTruck = shouldFollow;
     if (shouldFollow) {
         tileMapState.manualCenter = null;
@@ -1083,6 +1139,44 @@ function setMapFollowTruck(shouldFollow) {
     }
 
     updateMapModeLabel();
+
+    if (persistPreference) {
+        persistMapPreferences();
+    }
+}
+
+function applyWorldMapZoom(delta) {
+    if (!tileMapState.initialized) {
+        return;
+    }
+
+    const nextZoom = Math.max(tileMapState.minZoom, Math.min(tileMapState.maxZoom, tileMapState.zoom + delta));
+    if (nextZoom === tileMapState.zoom) {
+        return;
+    }
+
+    tileMapState.zoom = nextZoom;
+    persistMapPreferences();
+    if (latestTelemetryData) {
+        renderMap(latestTelemetryData);
+    }
+}
+
+function applyHeroMapZoom(delta) {
+    if (!tileMapState.initialized) {
+        return;
+    }
+
+    const nextZoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, heroMapState.zoom + delta));
+    if (nextZoom === heroMapState.zoom) {
+        return;
+    }
+
+    heroMapState.zoom = nextZoom;
+    persistMapPreferences();
+    if (latestTelemetryData) {
+        renderMap(latestTelemetryData);
+    }
 }
 
 function handleMapPointerDown(event) {
@@ -1586,7 +1680,7 @@ function renderMap(data) {
         tileMapState.currentTruckPixel = null;
         tileMapState.previousTruckWorld = null;
         heroMapState.lastView = null;
-        setHeroMapFollowTruck(true);
+        setHeroMapFollowTruck(true, false);
         if (elements.heroMapTiles) {
             elements.heroMapTiles.innerHTML = "";
         }
@@ -1732,10 +1826,26 @@ function renderTelemetry(payload) {
 }
 
 async function updateTelemetry() {
+    if (telemetryRequestInFlight) {
+        return;
+    }
+
+    telemetryRequestInFlight = true;
+
     try {
+        telemetryAbortController = typeof AbortController === "function" ? new AbortController() : null;
+        if (telemetryTimeoutHandle !== null) {
+            window.clearTimeout(telemetryTimeoutHandle);
+        }
+
+        telemetryTimeoutHandle = window.setTimeout(() => {
+            telemetryAbortController?.abort();
+        }, telemetryRequestTimeoutMs);
+
         const response = await fetch(telemetryEndpoint, {
             headers: { Accept: "application/json" },
             cache: "no-store",
+            signal: telemetryAbortController?.signal,
         });
 
         if (!response.ok) {
@@ -1745,6 +1855,7 @@ async function updateTelemetry() {
         const payload = await response.json();
         renderTelemetry(payload);
     } catch (error) {
+        const isAbort = error && typeof error === "object" && error.name === "AbortError";
         setConnectionState("Connection failed", "error");
 
         if (elements.lastUpdated) {
@@ -1752,11 +1863,20 @@ async function updateTelemetry() {
         }
 
         if (elements.heroSummary) {
-            elements.heroSummary.textContent = "The dashboard could not fetch a fresh telemetry snapshot from the local endpoint.";
+            elements.heroSummary.textContent = isAbort
+                ? "Telemetry request timed out before the endpoint responded."
+                : "The dashboard could not fetch a fresh telemetry snapshot from the local endpoint.";
         }
 
         if (elements.telemetryOutput) {
-            elements.telemetryOutput.textContent = error.message;
+            elements.telemetryOutput.textContent = error?.message || "Unknown telemetry error";
+        }
+    } finally {
+        telemetryRequestInFlight = false;
+        telemetryAbortController = null;
+        if (telemetryTimeoutHandle !== null) {
+            window.clearTimeout(telemetryTimeoutHandle);
+            telemetryTimeoutHandle = null;
         }
     }
 }
@@ -1804,31 +1924,15 @@ if (tabsRoot) {
 
 mapZoomButtons.forEach((button) => {
     button.addEventListener("click", () => {
-        if (!tileMapState.initialized) {
-            return;
-        }
-
         const delta = button.dataset.mapZoom === "in" ? 1 : -1;
-        tileMapState.zoom = Math.max(tileMapState.minZoom, Math.min(tileMapState.maxZoom, tileMapState.zoom + delta));
-
-        if (latestTelemetryData) {
-            renderMap(latestTelemetryData);
-        }
+        applyWorldMapZoom(delta);
     });
 });
 
 heroMapZoomButtons.forEach((button) => {
     button.addEventListener("click", () => {
-        if (!tileMapState.initialized) {
-            return;
-        }
-
         const delta = button.dataset.heroMapZoom === "in" ? 1 : -1;
-        heroMapState.zoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, heroMapState.zoom + delta));
-
-        if (latestTelemetryData) {
-            renderMap(latestTelemetryData);
-        }
+        applyHeroMapZoom(delta);
     });
 });
 
@@ -1837,6 +1941,14 @@ if (elements.ets2MapStage) {
     elements.ets2MapStage.addEventListener("pointermove", handleMapPointerMove);
     elements.ets2MapStage.addEventListener("pointerup", handleMapPointerEnd);
     elements.ets2MapStage.addEventListener("pointercancel", handleMapPointerEnd);
+    elements.ets2MapStage.addEventListener("wheel", (event) => {
+        if (!tileMapState.initialized) {
+            return;
+        }
+
+        event.preventDefault();
+        applyWorldMapZoom(event.deltaY < 0 ? 1 : -1);
+    }, { passive: false });
 }
 
 if (elements.heroMapStage) {
@@ -1844,6 +1956,14 @@ if (elements.heroMapStage) {
     elements.heroMapStage.addEventListener("pointermove", handleHeroMapPointerMove);
     elements.heroMapStage.addEventListener("pointerup", handleHeroMapPointerEnd);
     elements.heroMapStage.addEventListener("pointercancel", handleHeroMapPointerEnd);
+    elements.heroMapStage.addEventListener("wheel", (event) => {
+        if (!tileMapState.initialized) {
+            return;
+        }
+
+        event.preventDefault();
+        applyHeroMapZoom(event.deltaY < 0 ? 1 : -1);
+    }, { passive: false });
 }
 
 if (elements.ets2MapCenter) {
@@ -1859,6 +1979,7 @@ if (elements.heroMapCenter) {
     elements.heroMapCenter.addEventListener("click", () => {
         heroMapState.zoom = heroMapState.defaultZoom;
         setHeroMapFollowTruck(true);
+        persistMapPreferences();
         if (latestTelemetryData) {
             renderMap(latestTelemetryData);
         }
@@ -1873,6 +1994,12 @@ window.addEventListener("beforeunload", () => {
     if (tileMapRetryTimer !== null) {
         window.clearTimeout(tileMapRetryTimer);
     }
+
+    if (telemetryTimeoutHandle !== null) {
+        window.clearTimeout(telemetryTimeoutHandle);
+    }
+
+    telemetryAbortController?.abort();
 });
 
 try {
@@ -1886,6 +2013,8 @@ try {
     // Ignore storage failures so the default tab stays available.
     setActiveTab("overview");
 }
+
+loadMapPreferences();
 
 startTelemetryPolling();
 

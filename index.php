@@ -14,6 +14,7 @@ $initial_payload = [
 $dashboard_config = [
     'telemetryEndpoint' => 'telemetry.php?format=json',
     'refreshIntervalMs' => $refresh_interval_ms,
+    'telemetryRequestTimeoutMs' => 4500,
     'mapTiles' => [
         'baseUrlCandidates' => ['tiles', 'maps', 'http://127.0.0.1:8081'],
         'configNames' => ['config.json', 'TileMapInfo.json'],
