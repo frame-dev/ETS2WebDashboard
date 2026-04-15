@@ -43,6 +43,24 @@ const tileMapState = {
     },
 };
 
+const heroMapState = {
+    zoom: 3,
+    minZoom: 0,
+    maxZoom: 8,
+    defaultZoom: 3,
+    followTruck: true,
+    manualCenter: null,
+    lastView: null,
+    drag: {
+        active: false,
+        pointerId: null,
+        startClientX: 0,
+        startClientY: 0,
+        startCenterX: 0,
+        startCenterY: 0,
+    },
+};
+
 const elements = {
     heroTitle: document.getElementById("hero-title"),
     heroSummary: document.getElementById("hero-summary"),
@@ -72,6 +90,7 @@ const elements = {
     heroMapTiles: document.getElementById("hero-map-tiles"),
     heroMapFallback: document.getElementById("hero-map-fallback"),
     heroMapMarker: document.getElementById("hero-map-marker"),
+    heroMapCenter: document.getElementById("hero-map-center"),
     mapBadge: document.getElementById("map-badge"),
     ets2Map: document.getElementById("ets2-map"),
     ets2MapStage: document.getElementById("ets2-map-stage"),
@@ -104,6 +123,7 @@ const elements = {
 const tabButtons = Array.from(document.querySelectorAll("[data-tab]"));
 const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
 const mapZoomButtons = Array.from(document.querySelectorAll("[data-map-zoom]"));
+const heroMapZoomButtons = Array.from(document.querySelectorAll("[data-hero-map-zoom]"));
 
 let refreshTimer = null;
 let tileMapRetryTimer = null;
@@ -759,6 +779,12 @@ async function initializeTileMap() {
                 if (tileMapState.zoom > tileMapState.maxZoom) {
                     tileMapState.zoom = tileMapState.maxZoom;
                 }
+                heroMapState.minZoom = tileMapState.minZoom;
+                heroMapState.maxZoom = tileMapState.maxZoom;
+                heroMapState.defaultZoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, tileMapState.availableTileMaxZoom - 1));
+                heroMapState.zoom = heroMapState.defaultZoom;
+                heroMapState.followTruck = true;
+                heroMapState.manualCenter = null;
                 tileMapState.sourceLabel = normalized.sourceLabel;
 
                 updateMapModeLabel();
@@ -814,6 +840,20 @@ function getTileMapResolution(zoom) {
     return 2 ** (tileMapState.nativeMaxZoom - zoom);
 }
 
+function clampTileMapCenterForViewport(centerX, centerY, viewportWidth, viewportHeight, zoom) {
+    if (!tileMapState.config) {
+        return null;
+    }
+
+    const resolution = getTileMapResolution(zoom);
+    const halfWorldWidth = (viewportWidth * resolution) / 2;
+    const halfWorldHeight = (viewportHeight * resolution) / 2;
+    const clampedX = Math.max(halfWorldWidth, Math.min(centerX, tileMapState.config.map.maxX - halfWorldWidth));
+    const clampedY = Math.max(halfWorldHeight, Math.min(centerY, tileMapState.config.map.maxY - halfWorldHeight));
+
+    return { centerX: clampedX, centerY: clampedY };
+}
+
 function clampTileMapCenter(centerX, centerY) {
     if (!tileMapState.config || !elements.ets2MapStage) {
         return null;
@@ -821,13 +861,7 @@ function clampTileMapCenter(centerX, centerY) {
 
     const viewportWidth = Math.max(1, elements.ets2MapStage.clientWidth);
     const viewportHeight = Math.max(1, elements.ets2MapStage.clientHeight);
-    const resolution = getTileMapResolution(tileMapState.zoom);
-    const halfWorldWidth = (viewportWidth * resolution) / 2;
-    const halfWorldHeight = (viewportHeight * resolution) / 2;
-    const clampedX = Math.max(halfWorldWidth, Math.min(centerX, tileMapState.config.map.maxX - halfWorldWidth));
-    const clampedY = Math.max(halfWorldHeight, Math.min(centerY, tileMapState.config.map.maxY - halfWorldHeight));
-
-    return { centerX: clampedX, centerY: clampedY };
+    return clampTileMapCenterForViewport(centerX, centerY, viewportWidth, viewportHeight, tileMapState.zoom);
 }
 
 function getTileUrl(zoom, x, y) {
@@ -902,7 +936,10 @@ function renderHeroTileMap(centerX, centerY, markerHeadingDeg) {
 
     const viewportWidth = Math.max(1, elements.heroMapStage.clientWidth);
     const viewportHeight = Math.max(1, elements.heroMapStage.clientHeight);
-    const requestedZoom = Math.max(tileMapState.minZoom, Math.min(tileMapState.availableTileMaxZoom, tileMapState.zoom - 1));
+    const targetCenter = heroMapState.followTruck || !heroMapState.manualCenter
+        ? { centerX, centerY }
+        : heroMapState.manualCenter;
+    const requestedZoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, heroMapState.zoom));
     const fetchZoom = Math.min(requestedZoom, tileMapState.availableTileMaxZoom);
     const resolution = getTileMapResolution(requestedZoom);
     const fetchResolution = getTileMapResolution(fetchZoom);
@@ -913,8 +950,10 @@ function renderHeroTileMap(centerX, centerY, markerHeadingDeg) {
     const viewWorldHeight = viewportHeight * resolution;
     const maxLeft = Math.max(0, tileMapState.config.map.maxX - viewWorldWidth);
     const maxTop = Math.max(0, tileMapState.config.map.maxY - viewWorldHeight);
-    const viewLeft = Math.max(0, Math.min(centerX - (viewWorldWidth / 2), maxLeft));
-    const viewTop = Math.max(0, Math.min(centerY - (viewWorldHeight / 2), maxTop));
+    const clampedCenter = clampTileMapCenterForViewport(targetCenter.centerX, targetCenter.centerY, viewportWidth, viewportHeight, requestedZoom)
+        || targetCenter;
+    const viewLeft = Math.max(0, Math.min(clampedCenter.centerX - (viewWorldWidth / 2), maxLeft));
+    const viewTop = Math.max(0, Math.min(clampedCenter.centerY - (viewWorldHeight / 2), maxTop));
     const startTileX = Math.max(0, Math.floor(viewLeft / tileWorldSize));
     const startTileY = Math.max(0, Math.floor(viewTop / tileWorldSize));
     const endTileX = Math.min(maxFetchTileIndex, Math.floor((viewLeft + viewWorldWidth) / tileWorldSize));
@@ -943,11 +982,93 @@ function renderHeroTileMap(centerX, centerY, markerHeadingDeg) {
         elements.heroMapFallback.classList.remove("is-visible");
     }
 
+    heroMapState.lastView = {
+        centerX: clampedCenter.centerX,
+        centerY: clampedCenter.centerY,
+        viewLeft,
+        viewTop,
+        resolution,
+    };
+    if (!heroMapState.followTruck) {
+        heroMapState.manualCenter = { centerX: clampedCenter.centerX, centerY: clampedCenter.centerY };
+    }
+
     const markerLeft = (centerX - viewLeft) / resolution;
     const markerTop = (centerY - viewTop) / resolution;
     elements.heroMapMarker.style.left = `${markerLeft}px`;
     elements.heroMapMarker.style.top = `${markerTop}px`;
     elements.heroMapMarker.style.setProperty("--hero-map-marker-heading", `${markerHeadingDeg}deg`);
+}
+
+function setHeroMapFollowTruck(shouldFollow) {
+    heroMapState.followTruck = shouldFollow;
+    if (shouldFollow) {
+        heroMapState.manualCenter = null;
+    }
+
+    if (elements.heroMapCenter) {
+        elements.heroMapCenter.disabled = !tileMapState.initialized || heroMapState.followTruck;
+    }
+}
+
+function handleHeroMapPointerDown(event) {
+    if (!tileMapState.initialized || !heroMapState.lastView || !elements.heroMapStage) {
+        return;
+    }
+
+    heroMapState.drag.active = true;
+    heroMapState.drag.pointerId = event.pointerId;
+    heroMapState.drag.startClientX = event.clientX;
+    heroMapState.drag.startClientY = event.clientY;
+    heroMapState.drag.startCenterX = heroMapState.lastView.centerX;
+    heroMapState.drag.startCenterY = heroMapState.lastView.centerY;
+    elements.heroMapStage.dataset.dragging = "true";
+    elements.heroMapStage.setPointerCapture(event.pointerId);
+    setHeroMapFollowTruck(false);
+}
+
+function handleHeroMapPointerMove(event) {
+    if (!heroMapState.drag.active || heroMapState.drag.pointerId !== event.pointerId || !elements.heroMapStage) {
+        return;
+    }
+
+    const resolution = getTileMapResolution(heroMapState.zoom);
+    const deltaX = event.clientX - heroMapState.drag.startClientX;
+    const deltaY = event.clientY - heroMapState.drag.startClientY;
+    const viewportWidth = Math.max(1, elements.heroMapStage.clientWidth);
+    const viewportHeight = Math.max(1, elements.heroMapStage.clientHeight);
+    const nextCenter = clampTileMapCenterForViewport(
+        heroMapState.drag.startCenterX - (deltaX * resolution),
+        heroMapState.drag.startCenterY - (deltaY * resolution),
+        viewportWidth,
+        viewportHeight,
+        heroMapState.zoom,
+    );
+
+    if (!nextCenter) {
+        return;
+    }
+
+    heroMapState.manualCenter = nextCenter;
+    if (latestTelemetryData) {
+        renderMap(latestTelemetryData);
+    }
+}
+
+function handleHeroMapPointerEnd(event) {
+    if (!heroMapState.drag.active || heroMapState.drag.pointerId !== event.pointerId) {
+        return;
+    }
+
+    if (elements.heroMapStage?.hasPointerCapture(event.pointerId)) {
+        elements.heroMapStage.releasePointerCapture(event.pointerId);
+    }
+
+    heroMapState.drag.active = false;
+    heroMapState.drag.pointerId = null;
+    if (elements.heroMapStage) {
+        elements.heroMapStage.dataset.dragging = "false";
+    }
 }
 
 function setMapFollowTruck(shouldFollow) {
@@ -1464,6 +1585,8 @@ function renderMap(data) {
     if (!hasPosition) {
         tileMapState.currentTruckPixel = null;
         tileMapState.previousTruckWorld = null;
+        heroMapState.lastView = null;
+        setHeroMapFollowTruck(true);
         if (elements.heroMapTiles) {
             elements.heroMapTiles.innerHTML = "";
         }
@@ -1694,6 +1817,21 @@ mapZoomButtons.forEach((button) => {
     });
 });
 
+heroMapZoomButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+        if (!tileMapState.initialized) {
+            return;
+        }
+
+        const delta = button.dataset.heroMapZoom === "in" ? 1 : -1;
+        heroMapState.zoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, heroMapState.zoom + delta));
+
+        if (latestTelemetryData) {
+            renderMap(latestTelemetryData);
+        }
+    });
+});
+
 if (elements.ets2MapStage) {
     elements.ets2MapStage.addEventListener("pointerdown", handleMapPointerDown);
     elements.ets2MapStage.addEventListener("pointermove", handleMapPointerMove);
@@ -1701,9 +1839,26 @@ if (elements.ets2MapStage) {
     elements.ets2MapStage.addEventListener("pointercancel", handleMapPointerEnd);
 }
 
+if (elements.heroMapStage) {
+    elements.heroMapStage.addEventListener("pointerdown", handleHeroMapPointerDown);
+    elements.heroMapStage.addEventListener("pointermove", handleHeroMapPointerMove);
+    elements.heroMapStage.addEventListener("pointerup", handleHeroMapPointerEnd);
+    elements.heroMapStage.addEventListener("pointercancel", handleHeroMapPointerEnd);
+}
+
 if (elements.ets2MapCenter) {
     elements.ets2MapCenter.addEventListener("click", () => {
         setMapFollowTruck(true);
+        if (latestTelemetryData) {
+            renderMap(latestTelemetryData);
+        }
+    });
+}
+
+if (elements.heroMapCenter) {
+    elements.heroMapCenter.addEventListener("click", () => {
+        heroMapState.zoom = heroMapState.defaultZoom;
+        setHeroMapFollowTruck(true);
         if (latestTelemetryData) {
             renderMap(latestTelemetryData);
         }
