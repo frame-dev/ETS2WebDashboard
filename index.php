@@ -11,6 +11,21 @@ $app_description = (string) dashboard_config_value('app.metaDescription', 'Live 
 $hero_eyebrow = (string) dashboard_config_value('app.heroEyebrow', 'Euro Truck Simulator 2');
 $hero_title = (string) dashboard_config_value('app.heroTitle', 'Command dashboard online');
 $hero_summary = (string) dashboard_config_value('app.heroSummary', 'Preparing a live operator view from your local telemetry feed.');
+$design_config = [
+    'accentColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.accentColor', '#54EFC7'), '#54EFC7'),
+    'accentSecondaryColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.accentSecondaryColor', '#79C7FF'), '#79C7FF'),
+    'accentWarmColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.accentWarmColor', '#FFBF69'), '#FFBF69'),
+    'successColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.successColor', '#43D79F'), '#43D79F'),
+    'dangerColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.dangerColor', '#FF7050'), '#FF7050'),
+];
+$dashboard_theme_css = sprintf(
+    ':root{--teal:%1$s;--blue:%2$s;--amber:%3$s;--good:%4$s;--red:%5$s;--ring-color-off:%5$s;}',
+    $design_config['accentColor'],
+    $design_config['accentSecondaryColor'],
+    $design_config['accentWarmColor'],
+    $design_config['successColor'],
+    $design_config['dangerColor']
+);
 
 $refresh_interval_ms = (int) get_telemetry_refresh_interval_ms();
 $frontend_config = is_array($app_config['frontend'] ?? null) ? $app_config['frontend'] : [];
@@ -49,6 +64,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
     <meta name="description" content="<?php echo htmlspecialchars($app_description, ENT_QUOTES, 'UTF-8'); ?>">
     <title><?php echo htmlspecialchars($app_title, ENT_QUOTES, 'UTF-8'); ?></title>
     <link rel="stylesheet" href="index.css">
+    <style><?php echo $dashboard_theme_css; ?></style>
 </head>
 
 <body>
@@ -60,7 +76,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
             <span class="settings-link-icon" aria-hidden="true">O</span>
             <span class="settings-link-copy">
                 <span class="settings-link-label">Settings</span>
-                <span class="settings-link-meta">Snapshots and config</span>
+                <span class="settings-link-meta">Theme, telemetry, snapshots</span>
             </span>
         </a>
         <section class="hero-panel">

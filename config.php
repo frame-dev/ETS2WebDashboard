@@ -12,6 +12,13 @@ function dashboard_config_defaults(): array
             'heroTitle' => 'Command dashboard online',
             'heroSummary' => 'Preparing a live operator view from your local telemetry feed.',
         ],
+        'design' => [
+            'accentColor' => '#54EFC7',
+            'accentSecondaryColor' => '#79C7FF',
+            'accentWarmColor' => '#FFBF69',
+            'successColor' => '#43D79F',
+            'dangerColor' => '#FF7050',
+        ],
         'telemetry' => [
             'upstreamUrl' => 'http://127.0.0.1:31377/api/ets2/telemetry',
             'refreshIntervalMs' => 250,
@@ -121,6 +128,17 @@ function dashboard_env_string(string $name, string $default): string
     return $trimmed === '' ? $default : $trimmed;
 }
 
+function dashboard_sanitize_hex_color(string $value, string $default): string
+{
+    $normalized = strtoupper(trim($value));
+
+    if (preg_match('/^#(?:[0-9A-F]{3}|[0-9A-F]{6})$/', $normalized) === 1) {
+        return $normalized;
+    }
+
+    return strtoupper($default);
+}
+
 function dashboard_config(): array
 {
     static $config = null;
@@ -138,6 +156,27 @@ function dashboard_config(): array
             $config = dashboard_array_merge_recursive($config, $localConfig);
         }
     }
+
+    $config['design']['accentColor'] = dashboard_sanitize_hex_color(
+        (string) ($config['design']['accentColor'] ?? '#54EFC7'),
+        '#54EFC7'
+    );
+    $config['design']['accentSecondaryColor'] = dashboard_sanitize_hex_color(
+        (string) ($config['design']['accentSecondaryColor'] ?? '#79C7FF'),
+        '#79C7FF'
+    );
+    $config['design']['accentWarmColor'] = dashboard_sanitize_hex_color(
+        (string) ($config['design']['accentWarmColor'] ?? '#FFBF69'),
+        '#FFBF69'
+    );
+    $config['design']['successColor'] = dashboard_sanitize_hex_color(
+        (string) ($config['design']['successColor'] ?? '#43D79F'),
+        '#43D79F'
+    );
+    $config['design']['dangerColor'] = dashboard_sanitize_hex_color(
+        (string) ($config['design']['dangerColor'] ?? '#FF7050'),
+        '#FF7050'
+    );
 
     $config['telemetry']['upstreamUrl'] = dashboard_env_string(
         'ETS2_TELEMETRY_UPSTREAM_URL',

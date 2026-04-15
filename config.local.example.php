@@ -7,6 +7,13 @@ return [
         'pageTitle' => 'ETS2 Dashboard (Local)',
         'heroTitle' => 'Local command center online',
     ],
+    'design' => [
+        'accentColor' => '#54EFC7',
+        'accentSecondaryColor' => '#79C7FF',
+        'accentWarmColor' => '#FFBF69',
+        'successColor' => '#43D79F',
+        'dangerColor' => '#FF7050',
+    ],
     'telemetry' => [
         'upstreamUrl' => 'http://127.0.0.1:31377/api/ets2/telemetry',
         'refreshIntervalMs' => 300,
