@@ -56,6 +56,13 @@ $json_flags = JSON_UNESCAPED_SLASHES
         <p>This dashboard requires JavaScript to render live telemetry and map updates.</p>
     </noscript>
     <main class="dashboard-shell">
+        <a href="settings.php" class="settings-link" aria-label="Dashboard settings and configuration">
+            <span class="settings-link-icon" aria-hidden="true">O</span>
+            <span class="settings-link-copy">
+                <span class="settings-link-label">Settings</span>
+                <span class="settings-link-meta">Snapshots and config</span>
+            </span>
+        </a>
         <section class="hero-panel">
             <div class="hero-copy">
                 <p class="eyebrow"><?php echo htmlspecialchars($hero_eyebrow, ENT_QUOTES, 'UTF-8'); ?></p>

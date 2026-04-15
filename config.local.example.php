@@ -16,6 +16,13 @@ return [
         'cacheTtlMs' => 10000,
         'cacheFile' => __DIR__ . '/tmp/telemetry-cache.json',
     ],
+    'snapshots' => [
+        'enabled' => false,
+        'intervalMs' => 60000,
+        'directory' => __DIR__ . '/snapshots',
+        'stateFile' => __DIR__ . '/tmp/snapshot-state.json',
+        'prettyPrint' => true,
+    ],
     'frontend' => [
         'telemetryEndpoint' => 'telemetry.php?format=json',
         'telemetryPolling' => [

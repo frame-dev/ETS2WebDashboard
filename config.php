@@ -21,6 +21,13 @@ function dashboard_config_defaults(): array
             'cacheTtlMs' => 10000,
             'cacheFile' => __DIR__ . '/tmp/telemetry-cache.json',
         ],
+        'snapshots' => [
+            'enabled' => false,
+            'intervalMs' => 60000,
+            'directory' => __DIR__ . '/snapshots',
+            'stateFile' => __DIR__ . '/tmp/snapshot-state.json',
+            'prettyPrint' => true,
+        ],
         'frontend' => [
             'telemetryEndpoint' => 'telemetry.php?format=json',
             'telemetryPolling' => [
@@ -159,6 +166,26 @@ function dashboard_config(): array
     $config['telemetry']['cacheFile'] = dashboard_env_string(
         'ETS2_TELEMETRY_CACHE_FILE',
         (string) ($config['telemetry']['cacheFile'] ?? (__DIR__ . '/tmp/telemetry-cache.json'))
+    );
+    $config['snapshots']['enabled'] = dashboard_env_bool(
+        'ETS2_SNAPSHOTS_ENABLED',
+        (bool) ($config['snapshots']['enabled'] ?? false)
+    );
+    $config['snapshots']['intervalMs'] = dashboard_env_int(
+        'ETS2_SNAPSHOTS_INTERVAL_MS',
+        (int) ($config['snapshots']['intervalMs'] ?? 60000)
+    );
+    $config['snapshots']['directory'] = dashboard_env_string(
+        'ETS2_SNAPSHOTS_DIRECTORY',
+        (string) ($config['snapshots']['directory'] ?? (__DIR__ . '/snapshots'))
+    );
+    $config['snapshots']['stateFile'] = dashboard_env_string(
+        'ETS2_SNAPSHOTS_STATE_FILE',
+        (string) ($config['snapshots']['stateFile'] ?? (__DIR__ . '/tmp/snapshot-state.json'))
+    );
+    $config['snapshots']['prettyPrint'] = dashboard_env_bool(
+        'ETS2_SNAPSHOTS_PRETTY_PRINT',
+        (bool) ($config['snapshots']['prettyPrint'] ?? true)
     );
 
     return $config;

@@ -2,3 +2,4 @@ tiles/*
 tiles copy
 config.local.php
 tmp
+snapshots

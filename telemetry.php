@@ -40,25 +40,148 @@ function telemetry_cache_read(string $cachePath, int $cacheTtlMs): ?array {
     }
 
     $data = $decoded['data'] ?? null;
-    return is_array($data) ? $data : null;
+    if (!is_array($data)) {
+        return null;
+    }
+
+    return [
+        'cachedAtMs' => $cachedAtMs,
+        'data' => $data,
+    ];
 }
 
-function telemetry_cache_write(string $cachePath, array $data): void {
+function telemetry_cache_write(string $cachePath, array $data, ?int $cachedAtMs = null): int {
     $cacheDir = dirname($cachePath);
     if (!is_dir($cacheDir)) {
         @mkdir($cacheDir, 0777, true);
     }
 
     if (!is_dir($cacheDir) || !is_writable($cacheDir)) {
-        return;
+        return (int) ($cachedAtMs ?? floor(microtime(true) * 1000));
     }
 
+    $effectiveCachedAtMs = (int) ($cachedAtMs ?? floor(microtime(true) * 1000));
     $payload = [
-        'cachedAtMs' => (int) floor(microtime(true) * 1000),
+        'cachedAtMs' => $effectiveCachedAtMs,
         'data' => $data,
     ];
 
     @file_put_contents($cachePath, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    return $effectiveCachedAtMs;
+}
+
+function telemetry_snapshot_read_state(string $statePath): array
+{
+    if (!is_file($statePath)) {
+        return [];
+    }
+
+    $raw = @file_get_contents($statePath);
+    if ($raw === false) {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function telemetry_snapshot_write_state(string $statePath, array $state): void
+{
+    $stateDir = dirname($statePath);
+    if (!is_dir($stateDir)) {
+        @mkdir($stateDir, 0777, true);
+    }
+
+    if (!is_dir($stateDir) || !is_writable($stateDir)) {
+        return;
+    }
+
+    @file_put_contents($statePath, json_encode($state, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+function telemetry_snapshot_build_filename(int $timestampMs): string
+{
+    $seconds = sprintf('%.6F', $timestampMs / 1000);
+    $date = \DateTimeImmutable::createFromFormat('U.u', $seconds, new \DateTimeZone('UTC'));
+    if (!$date instanceof \DateTimeImmutable) {
+        return 'telemetry-' . gmdate('Y-m-d\TH-i-s\Z') . '.json';
+    }
+
+    return sprintf(
+        'telemetry-%s-%03dZ.json',
+        $date->format('Y-m-d\TH-i-s'),
+        $timestampMs % 1000
+    );
+}
+
+function telemetry_snapshot_capture_if_due(array $data, array $source): void
+{
+    if (!(bool) dashboard_config_value('snapshots.enabled', false)) {
+        return;
+    }
+
+    if (!in_array((string) ($source['type'] ?? 'none'), ['upstream', 'cache'], true)) {
+        return;
+    }
+
+    $intervalMs = max(1000, (int) dashboard_config_value('snapshots.intervalMs', 60000));
+    $snapshotDir = (string) dashboard_config_value('snapshots.directory', __DIR__ . '/snapshots');
+    $statePath = (string) dashboard_config_value('snapshots.stateFile', __DIR__ . '/tmp/snapshot-state.json');
+    $prettyPrint = (bool) dashboard_config_value('snapshots.prettyPrint', true);
+    $sourceCachedAtMs = (int) ($source['cachedAtMs'] ?? 0);
+    $nowMs = (int) floor(microtime(true) * 1000);
+    $state = telemetry_snapshot_read_state($statePath);
+    $lastSnapshotAtMs = (int) ($state['lastSnapshotAtMs'] ?? 0);
+    $lastSourceCachedAtMs = (int) ($state['lastSourceCachedAtMs'] ?? 0);
+
+    if ($sourceCachedAtMs > 0 && $sourceCachedAtMs === $lastSourceCachedAtMs) {
+        return;
+    }
+
+    if ($lastSnapshotAtMs > 0 && ($nowMs - $lastSnapshotAtMs) < $intervalMs) {
+        return;
+    }
+
+    if (!is_dir($snapshotDir)) {
+        @mkdir($snapshotDir, 0777, true);
+    }
+
+    if (!is_dir($snapshotDir) || !is_writable($snapshotDir)) {
+        return;
+    }
+
+    $snapshotTakenAtMs = $nowMs;
+    $snapshotPayload = [
+        'snapshotTakenAt' => gmdate('c', (int) floor($snapshotTakenAtMs / 1000)),
+        'snapshotTakenAtMs' => $snapshotTakenAtMs,
+        'source' => [
+            'type' => (string) ($source['type'] ?? 'none'),
+            'statusCode' => $source['statusCode'] ?? null,
+            'cachedAtMs' => $sourceCachedAtMs > 0 ? $sourceCachedAtMs : null,
+            'error' => $source['error'] ?? null,
+        ],
+        'data' => $data,
+    ];
+    $flags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+    if ($prettyPrint) {
+        $flags |= JSON_PRETTY_PRINT;
+    }
+
+    $snapshotPath = rtrim($snapshotDir, '/\\') . DIRECTORY_SEPARATOR . telemetry_snapshot_build_filename($snapshotTakenAtMs);
+    $encodedPayload = json_encode($snapshotPayload, $flags);
+    if ($encodedPayload === false) {
+        return;
+    }
+
+    if (@file_put_contents($snapshotPath, $encodedPayload . PHP_EOL, LOCK_EX) === false) {
+        return;
+    }
+
+    telemetry_snapshot_write_state($statePath, [
+        'lastSnapshotAtMs' => $snapshotTakenAtMs,
+        'lastSourceCachedAtMs' => $sourceCachedAtMs,
+        'lastSnapshotFile' => basename($snapshotPath),
+    ]);
 }
 
 function fetch_telemetry_data($telemetry_url = TELEMETRY_URL, &$source = null) {
@@ -66,6 +189,7 @@ function fetch_telemetry_data($telemetry_url = TELEMETRY_URL, &$source = null) {
         'type' => 'none',
         'statusCode' => null,
         'error' => null,
+        'cachedAtMs' => null,
     ];
 
     $timeoutMs = (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500);
@@ -89,11 +213,14 @@ function fetch_telemetry_data($telemetry_url = TELEMETRY_URL, &$source = null) {
     if ($telemetry_data !== false && $statusCode !== null && $statusCode >= 200 && $statusCode < 300) {
         $json_data = json_decode($telemetry_data, true);
         if (is_array($json_data)) {
+            $cachedAtMs = (int) floor(microtime(true) * 1000);
             if ($cacheEnabled) {
-                telemetry_cache_write($cachePath, $json_data);
+                $cachedAtMs = telemetry_cache_write($cachePath, $json_data, $cachedAtMs);
             }
 
             $source['type'] = 'upstream';
+            $source['cachedAtMs'] = $cachedAtMs;
+            telemetry_snapshot_capture_if_due($json_data, $source);
             return $json_data;
         }
 
@@ -105,10 +232,12 @@ function fetch_telemetry_data($telemetry_url = TELEMETRY_URL, &$source = null) {
     }
 
     if ($cacheEnabled) {
-        $cachedData = telemetry_cache_read($cachePath, $cacheTtlMs);
-        if (is_array($cachedData)) {
+        $cachedRecord = telemetry_cache_read($cachePath, $cacheTtlMs);
+        if (is_array($cachedRecord) && is_array($cachedRecord['data'] ?? null)) {
             $source['type'] = 'cache';
-            return $cachedData;
+            $source['cachedAtMs'] = (int) ($cachedRecord['cachedAtMs'] ?? 0);
+            telemetry_snapshot_capture_if_due($cachedRecord['data'], $source);
+            return $cachedRecord['data'];
         }
     }
 
