@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 require_once 'telemetry.php';
@@ -30,6 +31,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -37,6 +39,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
     <title>ETS2 Command Dashboard</title>
     <link rel="stylesheet" href="index.css">
 </head>
+
 <body>
     <noscript>
         <p>This dashboard requires JavaScript to render live telemetry and map updates.</p>
@@ -56,7 +59,6 @@ $json_flags = JSON_UNESCAPED_SLASHES
                         <span class="speed-value" id="hero-speed-value">0</span>
                         <span class="road-speed" id="road-speed-value">0</span>
                         <span class="cruise-control-speed" id="cruise-control-speed"></span>
-                        <span class="speed-unit">km/h</span>
                     </div>
                 </div>
                 <div class="speed-meta">
@@ -78,8 +80,23 @@ $json_flags = JSON_UNESCAPED_SLASHES
                 <span class="from-to">From - To</span>
                 <span class="from-to-value" id="from-to-value">Not Active</span>
                 <span class="route-distance" id="route-distance">-- km</span>
-                <span class="route-time" id="route-time">--:--</span>
-                <span class="route-real-time" id="route-real-time">--:--</span>
+                <span class="fuel-range" id="fuel-range">-- km range</span>
+                <span class="route-time" id="route-time">ETA --:--</span>
+                <span class="route-real-time" id="route-real-time">REAL --:--</span>
+            </div>
+            <div class="hero-map" id="hero-map">
+                <div class="hero-map-stage" id="hero-map-stage">
+                    <div class="hero-map-tiles" id="hero-map-tiles"></div>
+                    <img class="hero-map-fallback" id="hero-map-fallback" src="map-ets2-preview.jpg" alt="Static ETS2 world map">
+                    <div class="hero-map-marker" id="hero-map-marker">
+                        <span class="hero-map-marker-core"></span>
+                    </div>
+                </div>
+                <div class="hero-map-toolbar">
+                    <button class="hero-map-button hero-map-center-button" type="button" id="hero-map-center" aria-label="Center hero map on truck">Center</button>
+                    <button class="hero-map-button" type="button" data-hero-map-zoom="out" aria-label="Zoom hero map out">-</button>
+                    <button class="hero-map-button" type="button" data-hero-map-zoom="in" aria-label="Zoom hero map in">+</button>
+                </div>
             </div>
         </section>
 
@@ -289,4 +306,5 @@ $json_flags = JSON_UNESCAPED_SLASHES
     </script>
     <script src="index.js" defer></script>
 </body>
+
 </html>

@@ -66,6 +66,12 @@ const elements = {
     routeDistance: document.getElementById("route-distance"),
     routeTime: document.getElementById("route-time"),
     routeRealTime: document.getElementById("route-real-time"),
+    fuelRange: document.getElementById("fuel-range"),
+    heroMap: document.getElementById("hero-map"),
+    heroMapStage: document.getElementById("hero-map-stage"),
+    heroMapTiles: document.getElementById("hero-map-tiles"),
+    heroMapFallback: document.getElementById("hero-map-fallback"),
+    heroMapMarker: document.getElementById("hero-map-marker"),
     mapBadge: document.getElementById("map-badge"),
     ets2Map: document.getElementById("ets2-map"),
     ets2MapStage: document.getElementById("ets2-map-stage"),
@@ -432,11 +438,11 @@ function formatRouteEtaFromNavigation(navigation = {}) {
 function formatRouteRealTimeFromNavigation(navigation = {}) {
     const routeMinutes = getPreferredRouteMinutes(navigation);
     if (routeMinutes === null) {
-        return "";
+        return "--:--";
     }
 
     const compact = formatDurationMinutes(routeMinutes / routePlannerRealTimeScale);
-    return compact === "--" ? "" : `${compact} real`;
+    return compact === "--" ? "--:--" : `${compact}`;
 }
 
 function getNavigationDistanceKm(navigation = {}) {
@@ -886,6 +892,64 @@ function renderTileMap(centerX, centerY) {
     };
 }
 
+function renderHeroTileMap(centerX, centerY, markerHeadingDeg) {
+    if (!tileMapState.initialized || !tileMapState.config || !elements.heroMapStage || !elements.heroMapTiles || !elements.heroMapMarker) {
+        if (elements.heroMapFallback) {
+            elements.heroMapFallback.classList.add("is-visible");
+        }
+        return;
+    }
+
+    const viewportWidth = Math.max(1, elements.heroMapStage.clientWidth);
+    const viewportHeight = Math.max(1, elements.heroMapStage.clientHeight);
+    const requestedZoom = Math.max(tileMapState.minZoom, Math.min(tileMapState.availableTileMaxZoom, tileMapState.zoom - 1));
+    const fetchZoom = Math.min(requestedZoom, tileMapState.availableTileMaxZoom);
+    const resolution = getTileMapResolution(requestedZoom);
+    const fetchResolution = getTileMapResolution(fetchZoom);
+    const tileSize = tileMapState.config.map.tileSize;
+    const tileWorldSize = tileSize * fetchResolution;
+    const maxFetchTileIndex = Math.max(0, (2 ** fetchZoom) - 1);
+    const viewWorldWidth = viewportWidth * resolution;
+    const viewWorldHeight = viewportHeight * resolution;
+    const maxLeft = Math.max(0, tileMapState.config.map.maxX - viewWorldWidth);
+    const maxTop = Math.max(0, tileMapState.config.map.maxY - viewWorldHeight);
+    const viewLeft = Math.max(0, Math.min(centerX - (viewWorldWidth / 2), maxLeft));
+    const viewTop = Math.max(0, Math.min(centerY - (viewWorldHeight / 2), maxTop));
+    const startTileX = Math.max(0, Math.floor(viewLeft / tileWorldSize));
+    const startTileY = Math.max(0, Math.floor(viewTop / tileWorldSize));
+    const endTileX = Math.min(maxFetchTileIndex, Math.floor((viewLeft + viewWorldWidth) / tileWorldSize));
+    const endTileY = Math.min(maxFetchTileIndex, Math.floor((viewTop + viewWorldHeight) / tileWorldSize));
+    const tiles = [];
+
+    for (let tileX = startTileX; tileX <= endTileX; tileX += 1) {
+        for (let tileY = startTileY; tileY <= endTileY; tileY += 1) {
+            const screenLeft = (tileX * tileWorldSize - viewLeft) / resolution;
+            const screenTop = (tileY * tileWorldSize - viewTop) / resolution;
+
+            tiles.push(`
+                <img
+                    class="hero-map-tile"
+                    src="${escapeHtml(getTileUrl(fetchZoom, tileX, tileY))}"
+                    alt=""
+                    loading="lazy"
+                    style="left:${screenLeft}px;top:${screenTop}px;width:${tileWorldSize / resolution}px;height:${tileWorldSize / resolution}px;"
+                >
+            `);
+        }
+    }
+
+    elements.heroMapTiles.innerHTML = tiles.join("");
+    if (elements.heroMapFallback) {
+        elements.heroMapFallback.classList.remove("is-visible");
+    }
+
+    const markerLeft = (centerX - viewLeft) / resolution;
+    const markerTop = (centerY - viewTop) / resolution;
+    elements.heroMapMarker.style.left = `${markerLeft}px`;
+    elements.heroMapMarker.style.top = `${markerTop}px`;
+    elements.heroMapMarker.style.setProperty("--hero-map-marker-heading", `${markerHeadingDeg}deg`);
+}
+
 function setMapFollowTruck(shouldFollow) {
     tileMapState.followTruck = shouldFollow;
     if (shouldFollow) {
@@ -1095,6 +1159,11 @@ function renderMetrics(data) {
         elements.metricRange.textContent = formatDistanceKm(truck.fuelRange);
     }
 
+    if (elements.fuelRange) {
+        const rangeText = formatDistanceKm(truck.fuelRange);
+        elements.fuelRange.textContent = rangeText === "--" ? "-- km range" : `${rangeText} range`;
+    }
+
     if (elements.metricRangeNote) {
         elements.metricRangeNote.textContent = `Avg ${formatNumber(truck.fuelAverageConsumption, 2)} L/km`;
     }
@@ -1149,14 +1218,14 @@ function renderRoute(data) {
 
     if (elements.routeTime) {
         elements.routeTime.textContent = hasJob
-            ? formatRouteEtaFromNavigation(navigation)
-            : "--";
+            ? `ETA ${formatRouteEtaFromNavigation(navigation)}`
+            : "ETA --:--";
     }
 
     if (elements.routeRealTime) {
         elements.routeRealTime.textContent = hasJob
-            ? formatRouteRealTimeFromNavigation(navigation)
-            : "";
+            ? `REAL ${formatRouteRealTimeFromNavigation(navigation)}`
+            : "REAL --:--";
     }
 
     if (elements.routeSource) {
@@ -1395,6 +1464,17 @@ function renderMap(data) {
     if (!hasPosition) {
         tileMapState.currentTruckPixel = null;
         tileMapState.previousTruckWorld = null;
+        if (elements.heroMapTiles) {
+            elements.heroMapTiles.innerHTML = "";
+        }
+        if (elements.heroMapFallback) {
+            elements.heroMapFallback.classList.add("is-visible");
+        }
+        if (elements.heroMapMarker) {
+            elements.heroMapMarker.style.left = "50%";
+            elements.heroMapMarker.style.top = "50%";
+            elements.heroMapMarker.style.setProperty("--hero-map-marker-heading", "0deg");
+        }
         elements.ets2MapMarker.style.left = "50%";
         elements.ets2MapMarker.style.top = "50%";
         elements.ets2MapMarker.style.setProperty("--map-marker-heading", "0deg");
@@ -1440,6 +1520,7 @@ function renderMap(data) {
         const mapPixels = gameCoordsToTilePixels(x, z, tileMapState.config);
         if (mapPixels) {
             tileMapState.currentTruckPixel = mapPixels;
+            renderHeroTileMap(mapPixels.pixelX, mapPixels.pixelY, markerHeadingDeg);
             const targetCenter = tileMapState.followTruck || !tileMapState.manualCenter
                 ? { centerX: mapPixels.pixelX, centerY: mapPixels.pixelY }
                 : tileMapState.manualCenter;
