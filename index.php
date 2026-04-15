@@ -86,7 +86,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                 <span class="route-real-time" id="route-real-time">REAL --:--</span>
             </div>
             <div class="hero-map" id="hero-map">
-                <div class="hero-map-stage" id="hero-map-stage">
+                <div class="hero-map-stage" id="hero-map-stage" tabindex="0" aria-label="Hero map, use plus or minus to zoom and C to center">
                     <div class="hero-map-tiles" id="hero-map-tiles"></div>
                     <img class="hero-map-fallback" id="hero-map-fallback" src="map-ets2-preview.jpg" alt="Static ETS2 world map">
                     <div class="hero-map-marker" id="hero-map-marker">
@@ -245,7 +245,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                             <span class="panel-badge" id="map-badge">Tracking</span>
                         </div>
                         <div class="ets2-map" id="ets2-map">
-                            <div class="ets2-map-stage" id="ets2-map-stage">
+                            <div class="ets2-map-stage" id="ets2-map-stage" tabindex="0" aria-label="World map, use plus or minus to zoom and C to center">
                                 <div class="ets2-map-tiles" id="ets2-map-tiles"></div>
                                 <img class="ets2-map-image ets2-map-fallback" id="ets2-map-fallback" src="map-ets2-preview.jpg" alt="Static ETS2 world map">
                             </div>

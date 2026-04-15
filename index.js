@@ -134,6 +134,88 @@ let telemetryRequestInFlight = false;
 let telemetryAbortController = null;
 let telemetryTimeoutHandle = null;
 let hasLoadedMapPreferences = false;
+let activeMapTarget = "world";
+
+function setActiveMapTarget(target) {
+    if (target === "world" || target === "hero") {
+        activeMapTarget = target;
+    }
+}
+
+function centerWorldMap() {
+    setMapFollowTruck(true);
+    if (latestTelemetryData) {
+        renderMap(latestTelemetryData);
+    }
+}
+
+function centerHeroMap(resetZoom = true) {
+    if (resetZoom) {
+        heroMapState.zoom = heroMapState.defaultZoom;
+    }
+
+    setHeroMapFollowTruck(true);
+    persistMapPreferences();
+    if (latestTelemetryData) {
+        renderMap(latestTelemetryData);
+    }
+}
+
+function isEditableTarget(target) {
+    if (!(target instanceof Element)) {
+        return false;
+    }
+
+    if (target.closest("input, textarea, select")) {
+        return true;
+    }
+
+    return Boolean(target.closest("[contenteditable='true']"));
+}
+
+function handleGlobalMapShortcuts(event) {
+    if (event.repeat || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+    }
+
+    if (isEditableTarget(event.target)) {
+        return;
+    }
+
+    const key = String(event.key || "");
+    const lowerKey = key.toLowerCase();
+    const isZoomIn = key === "+" || key === "=" || event.code === "NumpadAdd";
+    const isZoomOut = key === "-" || key === "_" || event.code === "NumpadSubtract";
+
+    if (isZoomIn) {
+        event.preventDefault();
+        if (activeMapTarget === "hero") {
+            applyHeroMapZoom(1);
+        } else {
+            applyWorldMapZoom(1);
+        }
+        return;
+    }
+
+    if (isZoomOut) {
+        event.preventDefault();
+        if (activeMapTarget === "hero") {
+            applyHeroMapZoom(-1);
+        } else {
+            applyWorldMapZoom(-1);
+        }
+        return;
+    }
+
+    if (lowerKey === "c") {
+        event.preventDefault();
+        if (activeMapTarget === "hero") {
+            centerHeroMap(false);
+        } else {
+            centerWorldMap();
+        }
+    }
+}
 
 function persistMapPreferences() {
     try {
@@ -1072,6 +1154,7 @@ function handleHeroMapPointerDown(event) {
         return;
     }
 
+    setActiveMapTarget("hero");
     heroMapState.drag.active = true;
     heroMapState.drag.pointerId = event.pointerId;
     heroMapState.drag.startClientX = event.clientX;
@@ -1184,6 +1267,7 @@ function handleMapPointerDown(event) {
         return;
     }
 
+    setActiveMapTarget("world");
     tileMapState.drag.active = true;
     tileMapState.drag.pointerId = event.pointerId;
     tileMapState.drag.startClientX = event.clientX;
@@ -1924,6 +2008,7 @@ if (tabsRoot) {
 
 mapZoomButtons.forEach((button) => {
     button.addEventListener("click", () => {
+        setActiveMapTarget("world");
         const delta = button.dataset.mapZoom === "in" ? 1 : -1;
         applyWorldMapZoom(delta);
     });
@@ -1931,6 +2016,7 @@ mapZoomButtons.forEach((button) => {
 
 heroMapZoomButtons.forEach((button) => {
     button.addEventListener("click", () => {
+        setActiveMapTarget("hero");
         const delta = button.dataset.heroMapZoom === "in" ? 1 : -1;
         applyHeroMapZoom(delta);
     });
@@ -1941,11 +2027,15 @@ if (elements.ets2MapStage) {
     elements.ets2MapStage.addEventListener("pointermove", handleMapPointerMove);
     elements.ets2MapStage.addEventListener("pointerup", handleMapPointerEnd);
     elements.ets2MapStage.addEventListener("pointercancel", handleMapPointerEnd);
+    elements.ets2MapStage.addEventListener("focusin", () => {
+        setActiveMapTarget("world");
+    });
     elements.ets2MapStage.addEventListener("wheel", (event) => {
         if (!tileMapState.initialized) {
             return;
         }
 
+        setActiveMapTarget("world");
         event.preventDefault();
         applyWorldMapZoom(event.deltaY < 0 ? 1 : -1);
     }, { passive: false });
@@ -1956,11 +2046,15 @@ if (elements.heroMapStage) {
     elements.heroMapStage.addEventListener("pointermove", handleHeroMapPointerMove);
     elements.heroMapStage.addEventListener("pointerup", handleHeroMapPointerEnd);
     elements.heroMapStage.addEventListener("pointercancel", handleHeroMapPointerEnd);
+    elements.heroMapStage.addEventListener("focusin", () => {
+        setActiveMapTarget("hero");
+    });
     elements.heroMapStage.addEventListener("wheel", (event) => {
         if (!tileMapState.initialized) {
             return;
         }
 
+        setActiveMapTarget("hero");
         event.preventDefault();
         applyHeroMapZoom(event.deltaY < 0 ? 1 : -1);
     }, { passive: false });
@@ -1968,23 +2062,19 @@ if (elements.heroMapStage) {
 
 if (elements.ets2MapCenter) {
     elements.ets2MapCenter.addEventListener("click", () => {
-        setMapFollowTruck(true);
-        if (latestTelemetryData) {
-            renderMap(latestTelemetryData);
-        }
+        setActiveMapTarget("world");
+        centerWorldMap();
     });
 }
 
 if (elements.heroMapCenter) {
     elements.heroMapCenter.addEventListener("click", () => {
-        heroMapState.zoom = heroMapState.defaultZoom;
-        setHeroMapFollowTruck(true);
-        persistMapPreferences();
-        if (latestTelemetryData) {
-            renderMap(latestTelemetryData);
-        }
+        setActiveMapTarget("hero");
+        centerHeroMap(true);
     });
 }
+
+window.addEventListener("keydown", handleGlobalMapShortcuts);
 
 window.addEventListener("beforeunload", () => {
     if (refreshTimer !== null) {
