@@ -93,6 +93,7 @@ const elements = {
     heroMapFallback: document.getElementById("hero-map-fallback"),
     heroMapMarker: document.getElementById("hero-map-marker"),
     heroMapCenter: document.getElementById("hero-map-center"),
+    heroMapShortcuts: document.getElementById("hero-map-shortcuts"),
     mapBadge: document.getElementById("map-badge"),
     ets2Map: document.getElementById("ets2-map"),
     ets2MapStage: document.getElementById("ets2-map-stage"),
@@ -102,6 +103,7 @@ const elements = {
     ets2MapLabel: document.getElementById("ets2-map-label"),
     ets2MapMode: document.getElementById("ets2-map-mode"),
     ets2MapCenter: document.getElementById("ets2-map-center"),
+    ets2MapShortcuts: document.getElementById("ets2-map-shortcuts"),
     mapMeta: document.getElementById("map-meta"),
     routeBadge: document.getElementById("route-badge"),
     routeSource: document.getElementById("route-source"),
@@ -139,6 +141,29 @@ let activeMapTarget = "world";
 function setActiveMapTarget(target) {
     if (target === "world" || target === "hero") {
         activeMapTarget = target;
+        updateMapInteractionHints();
+    }
+}
+
+function updateMapInteractionHints() {
+    if (elements.ets2MapStage) {
+        elements.ets2MapStage.dataset.active = activeMapTarget === "world" ? "true" : "false";
+    }
+
+    if (elements.heroMapStage) {
+        elements.heroMapStage.dataset.active = activeMapTarget === "hero" ? "true" : "false";
+    }
+
+    if (elements.ets2MapShortcuts) {
+        elements.ets2MapShortcuts.textContent = activeMapTarget === "world"
+            ? "Active: +/- zoom, C center"
+            : "Click map to target";
+    }
+
+    if (elements.heroMapShortcuts) {
+        elements.heroMapShortcuts.textContent = activeMapTarget === "hero"
+            ? "Active: +/- zoom, C center"
+            : "Click map to target";
     }
 }
 
@@ -2110,3 +2135,4 @@ startTelemetryPolling();
 
 updateMapModeLabel();
 initializeTileMap();
+updateMapInteractionHints();

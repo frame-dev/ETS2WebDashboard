@@ -94,6 +94,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                     </div>
                 </div>
                 <div class="hero-map-toolbar">
+                    <span class="hero-map-shortcuts" id="hero-map-shortcuts">Shortcuts: +/- zoom, C center</span>
                     <button class="hero-map-button hero-map-center-button" type="button" id="hero-map-center" aria-label="Center hero map on truck">Center</button>
                     <button class="hero-map-button" type="button" data-hero-map-zoom="out" aria-label="Zoom hero map out">-</button>
                     <button class="hero-map-button" type="button" data-hero-map-zoom="in" aria-label="Zoom hero map in">+</button>
@@ -254,6 +255,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                             </div>
                             <div class="ets2-map-toolbar">
                                 <span class="ets2-map-mode" id="ets2-map-mode">Static preview</span>
+                                <span class="ets2-map-shortcuts" id="ets2-map-shortcuts">Shortcuts: +/- zoom, C center</span>
                                 <div class="ets2-map-zoom-controls">
                                     <button class="ets2-map-zoom-button ets2-map-center-button" type="button" id="ets2-map-center" aria-label="Center on truck">Center</button>
                                     <button class="ets2-map-zoom-button" type="button" data-map-zoom="out" aria-label="Zoom out">-</button>
