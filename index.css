@@ -21,6 +21,9 @@
     --ring-color: var(--teal);
     --ring-color-off: var(--red);
     --ring-track-color: rgba(255, 255, 255, 0.08);
+    --overlay-bg: rgba(8, 18, 31, 0.82);
+    --overlay-border: 1px solid rgba(170, 220, 255, 0.14);
+    --overlay-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 8px 22px rgba(0, 0, 0, 0.28);
     --focus-ring: 0 0 0 2px rgba(84, 239, 199, 0.72);
     --focus-ring-soft: 0 0 0 4px rgba(84, 239, 199, 0.22);
     --transition-fast: 160ms ease;
@@ -119,18 +122,28 @@ body::before {
 
 .hero-route {
     grid-column: 1 / -1;
+    grid-row: 2;
+    align-self: end;
+    justify-self: start;
+    z-index: 4;
+    margin: 0 0 10px 10px;
+    width: min(640px, calc(100% - 20px));
+    max-width: calc(100% - 20px);
     display: flex;
     flex-wrap: wrap;
     gap: 8px 10px;
     align-items: center;
     padding: 10px 12px;
     border-radius: 14px;
-    border: 1px solid rgba(170, 220, 255, 0.12);
-    background: rgba(255, 255, 255, 0.04);
+    border: var(--overlay-border);
+    background: linear-gradient(170deg, rgba(12, 24, 40, 0.88), rgba(8, 18, 31, 0.8));
+    backdrop-filter: blur(16px);
+    box-shadow: var(--overlay-shadow);
 }
 
 .hero-map {
     grid-column: 1 / -1;
+    grid-row: 2;
     position: relative;
     margin-top: 2px;
     aspect-ratio: 16 / 6;
@@ -245,6 +258,33 @@ body::before {
     gap: 6px;
 }
 
+.hero-map-job-overlay {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: min(360px, calc(100% - 20px));
+    max-width: calc(100% - 20px);
+    min-width: 0;
+    padding: 7px 10px;
+    border-radius: 12px;
+    border: var(--overlay-border);
+    background: var(--overlay-bg);
+    backdrop-filter: blur(16px);
+    color: var(--text-strong);
+    display: grid;
+    gap: 3px;
+    z-index: 3;
+}
+
+.hero-map-job-line {
+    display: block;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    white-space: normal;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
 .hero-map-shortcuts,
 .ets2-map-shortcuts {
     display: inline-flex;
@@ -252,8 +292,8 @@ body::before {
     min-height: 28px;
     padding: 5px 10px;
     border-radius: 999px;
-    border: 1px solid rgba(170, 220, 255, 0.14);
-    background: rgba(8, 18, 31, 0.82);
+    border: var(--overlay-border);
+    background: var(--overlay-bg);
     color: var(--text-muted);
     font-size: 0.73rem;
     line-height: 1;
@@ -442,25 +482,40 @@ body::before {
 }
 
 .hero-speed {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-self: start;
+    justify-self: end;
+    z-index: 4;
+    margin: 8px 8px 0 0;
+    pointer-events: none;
     display: grid;
     place-items: center;
-    gap: 16px;
+    gap: 6px;
+}
+
+.hero-speed .speed-ring-stats {
+    display: flex;
+}
+
+.hero-speed .speed-meta {
+    display: none;
 }
 
 .speed-ring {
-    width: min(220px, 46vw);
+    width: min(158px, 34vw);
     aspect-ratio: 1;
     border-radius: 50%;
-    padding: 14px;
+    padding: 10px;
     display: grid;
     place-items: center;
     background:
-        radial-gradient(circle at center, rgba(8, 18, 31, 0.95) 60%, transparent 61%),
+        radial-gradient(circle at center, rgba(8, 18, 31, 0.95) 58%, transparent 59%),
         conic-gradient(from -90deg, var(--ring-color) 0 var(--speed-progress), var(--ring-track-color) var(--speed-progress) 100%);
     box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-        inset 0 0 40px rgba(84, 239, 199, 0.14),
-        0 16px 38px rgba(0, 0, 0, 0.44);
+        inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+        inset 0 0 24px rgba(84, 239, 199, 0.11),
+        0 12px 26px rgba(0, 0, 0, 0.36);
 }
 
 .speed-limit-marker {
@@ -508,14 +563,14 @@ body::before {
     display: grid;
     place-items: center;
     position: relative;
-    gap: 4px;
-    padding: 34px 18px;
+    gap: 2px;
+    padding: 24px 12px;
     border-radius: 50%;
     text-align: center;
     border: 1px solid rgba(170, 220, 255, 0.16);
     background:
-        radial-gradient(circle at top, rgba(111, 198, 255, 0.08), transparent 55%),
-        linear-gradient(160deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+        radial-gradient(circle at top, rgba(111, 198, 255, 0.07), transparent 55%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
 }
 
 .speed-ring[data-engine-state="off"] .speed-ring-inner {
@@ -524,21 +579,22 @@ body::before {
 
 .speed-value {
     display: block;
-    font-size: clamp(2.1rem, 6vw, 4rem);
+    font-size: clamp(1.45rem, 3.6vw, 2.2rem);
     font-weight: 700;
     color: var(--text-strong);
     line-height: 0.9;
-    margin-top: 6px;
+    margin-top: 2px;
 }
 
 .speed-ring-stats {
-    margin-top: 8px;
-    width: min(240px, 64vw);
+    margin-top: 4px;
+    width: min(180px, 56vw);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 4px;
+    pointer-events: auto;
 }
 
 .speed-peak,
@@ -547,24 +603,24 @@ body::before {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 22px;
-    padding: 3px 9px;
+    min-height: 17px;
+    padding: 1px 6px;
     border-radius: 999px;
-    font-size: 0.69rem;
+    font-size: 0.58rem;
     line-height: 1;
     white-space: nowrap;
 }
 
 .speed-peak {
-    color: #dcfff5;
-    border: 1px solid rgba(84, 239, 199, 0.2);
-    background: rgba(84, 239, 199, 0.08);
+    color: #d9fff3;
+    border: 1px solid rgba(84, 239, 199, 0.18);
+    background: rgba(84, 239, 199, 0.06);
 }
 
 .speed-trend {
     color: #d8efff;
-    border: 1px solid rgba(111, 198, 255, 0.2);
-    background: rgba(111, 198, 255, 0.08);
+    border: 1px solid rgba(111, 198, 255, 0.18);
+    background: rgba(111, 198, 255, 0.06);
 }
 
 .speed-trend[data-trend="rising"] {
@@ -581,8 +637,8 @@ body::before {
 
 .speed-alert {
     color: #ffd9e3;
-    border: 1px solid rgba(255, 112, 150, 0.28);
-    background: rgba(255, 112, 150, 0.12);
+    border: 1px solid rgba(255, 112, 150, 0.24);
+    background: rgba(255, 112, 150, 0.1);
     opacity: 0;
     transform: translateY(-2px);
     transition: opacity 120ms ease, transform 120ms ease;
@@ -610,10 +666,10 @@ body::before {
 .speed-unit {
     margin: 0;
     position: absolute;
-    top: 54px;
+    top: 34px;
     left: 50%;
     transform: translateX(-50%);
-    font-size: 0.68rem;
+    font-size: 0.55rem;
     opacity: 0.78;
 }
 
@@ -625,28 +681,28 @@ body::before {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 22px;
-    max-width: calc(100% - 34px);
+    min-height: 15px;
+    max-width: calc(100% - 24px);
     overflow: hidden;
     text-overflow: ellipsis;
-    padding: 3px 8px;
+    padding: 1px 5px;
     border-radius: 999px;
     white-space: nowrap;
     margin: 0;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    font-size: 0.66rem;
+    font-size: 0.5rem;
 }
 
 .road-speed {
-    top: 10px;
+    top: 15px;
     color: #d8efff;
     background: rgba(111, 198, 255, 0.12);
     border: 1px solid rgba(111, 198, 255, 0.22);
 }
 
 .cruise-control-speed {
-    bottom: 10px;
+    bottom: 15px;
     color: #dcfff5;
     background: rgba(84, 239, 199, 0.12);
     border: 1px solid rgba(84, 239, 199, 0.22);
@@ -654,16 +710,16 @@ body::before {
 
 @media (max-width: 480px) {
     .speed-ring-stats {
-        width: min(220px, 78vw);
+        width: min(168px, 74vw);
         gap: 4px;
     }
 
     .speed-peak,
     .speed-trend,
     .speed-alert {
-        font-size: 0.64rem;
-        min-height: 20px;
-        padding: 3px 7px;
+        font-size: 0.54rem;
+        min-height: 16px;
+        padding: 1px 5px;
     }
 }
 
@@ -1026,14 +1082,41 @@ body::before {
     z-index: 2;
 }
 
+.ets2-map-job-overlay {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    width: min(360px, calc(100% - 28px));
+    max-width: calc(100% - 28px);
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 12px;
+    border: var(--overlay-border);
+    background: var(--overlay-bg);
+    backdrop-filter: blur(16px);
+    color: var(--text-strong);
+    display: grid;
+    gap: 3px;
+    z-index: 2;
+}
+
+.ets2-map-job-line {
+    display: block;
+    font-size: 0.73rem;
+    line-height: 1.2;
+    white-space: normal;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
 .ets2-map-mode {
     display: inline-flex;
     align-items: center;
     min-height: 28px;
     padding: 5px 10px;
     border-radius: 999px;
-    border: 1px solid rgba(170, 220, 255, 0.14);
-    background: rgba(8, 18, 31, 0.82);
+    border: var(--overlay-border);
+    background: var(--overlay-bg);
     color: var(--text-main);
     font-size: 0.76rem;
     line-height: 1;
@@ -1086,13 +1169,35 @@ body::before {
     max-width: calc(100% - 32px);
     padding: 8px 12px;
     border-radius: 999px;
-    border: 1px solid rgba(170, 220, 255, 0.12);
-    background: rgba(8, 18, 31, 0.82);
+    border: var(--overlay-border);
+    background: var(--overlay-bg);
     color: var(--text-strong);
     font-size: 0.84rem;
     line-height: 1.2;
     backdrop-filter: blur(16px);
     z-index: 2;
+}
+
+.hero-map-job-overlay,
+.ets2-map-job-overlay,
+.hero-map-shortcuts,
+.ets2-map-shortcuts,
+.ets2-map-mode,
+.ets2-map-label {
+    border: var(--overlay-border);
+    background: linear-gradient(170deg, rgba(12, 24, 40, 0.88), rgba(8, 18, 31, 0.8));
+    backdrop-filter: blur(16px);
+    box-shadow: var(--overlay-shadow);
+}
+
+.hero-map-job-line,
+.ets2-map-job-line {
+    display: block;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    white-space: normal;
+    overflow: hidden;
+    overflow-wrap: anywhere;
 }
 
 .map-meta {
@@ -1419,6 +1524,7 @@ body::before {
     }
 
     .hero-copy {
+        grid-column: 1 / -1;
         gap: 14px;
     }
 
@@ -1432,18 +1538,17 @@ body::before {
     }
 
     .hero-speed {
-        align-self: start;
         align-content: start;
         justify-items: center;
-        gap: 14px;
+        gap: 8px;
     }
 
     .speed-ring {
-        width: min(214px, 16vw);
+        width: min(146px, 10.5vw);
     }
 
     .speed-value {
-        font-size: clamp(2.4rem, 4vw, 4.4rem);
+        font-size: clamp(1.35rem, 2.4vw, 1.9rem);
     }
 
     .speed-meta {
@@ -1526,7 +1631,7 @@ body::before {
     }
 
     .speed-ring {
-        width: min(192px, 26vw);
+        width: min(142px, 18vw);
     }
 
     .hero-map {
@@ -1577,10 +1682,14 @@ body::before {
         justify-self: start;
         z-index: 4;
         margin: 0 0 10px 10px;
-        max-width: min(560px, calc(100% - 22px));
+        width: min(560px, calc(100% - 20px));
+        max-width: calc(100% - 20px);
         padding: 8px 10px;
         gap: 6px 8px;
-        backdrop-filter: blur(14px);
+        border: var(--overlay-border);
+        background: linear-gradient(170deg, rgba(12, 24, 40, 0.88), rgba(8, 18, 31, 0.8));
+        backdrop-filter: blur(16px);
+        box-shadow: var(--overlay-shadow);
     }
 
     .hero-route .from-to,
@@ -1600,57 +1709,56 @@ body::before {
         gap: 8px;
     }
 
-    .hero-speed .speed-ring-stats,
     .hero-speed .speed-meta {
         display: none;
     }
 
     .speed-ring {
         justify-self: center;
-        width: min(176px, 28vw);
+        width: min(136px, 24vw);
     }
 
     .speed-ring-inner {
-        padding: 30px 15px;
+        padding: 20px 10px;
     }
 
     .speed-value {
-        font-size: clamp(1.9rem, 4.8vw, 3rem);
-        margin-top: 4px;
+        font-size: clamp(1.2rem, 3.6vw, 1.8rem);
+        margin-top: 2px;
     }
 
     .speed-unit {
-        top: 46px;
-        font-size: 0.62rem;
+        top: 30px;
+        font-size: 0.5rem;
     }
 
     .road-speed,
     .cruise-control-speed {
-        min-height: 20px;
-        max-width: calc(100% - 28px);
-        padding: 2px 7px;
-        font-size: 0.61rem;
+        min-height: 14px;
+        max-width: calc(100% - 20px);
+        padding: 1px 5px;
+        font-size: 0.48rem;
     }
 
     .road-speed {
-        top: 8px;
+        top: 15px;
     }
 
     .cruise-control-speed {
-        bottom: 8px;
+        bottom: 15px;
     }
 
     .speed-ring-stats {
-        width: min(220px, 66vw);
+        width: min(170px, 58vw);
         justify-self: center;
     }
 
     .speed-peak,
     .speed-trend,
     .speed-alert {
-        font-size: 0.64rem;
-        min-height: 20px;
-        padding: 2px 7px;
+        font-size: 0.53rem;
+        min-height: 16px;
+        padding: 1px 5px;
     }
 
     .speed-meta {
@@ -1739,36 +1847,36 @@ body::before {
     }
 
     .speed-ring {
-        width: min(130px, 32vw);
+        width: min(118px, 28vw);
     }
 
     .speed-ring-inner {
-        padding: 21px 11px;
+        padding: 18px 9px;
     }
 
     .speed-value {
-        font-size: clamp(1.35rem, 5.6vw, 1.95rem);
+        font-size: clamp(1.1rem, 4.8vw, 1.55rem);
         margin-top: 2px;
     }
 
     .speed-unit {
-        top: 30px;
-        font-size: 0.5rem;
+        top: 24px;
+        font-size: 0.45rem;
     }
 
     .road-speed,
     .cruise-control-speed {
-        min-height: 16px;
-        font-size: 0.5rem;
-        padding: 1px 5px;
+        min-height: 13px;
+        font-size: 0.44rem;
+        padding: 1px 4px;
     }
 
     .road-speed {
-        top: 4px;
+        top: 15px;
     }
 
     .cruise-control-speed {
-        bottom: 4px;
+        bottom: 15px;
     }
 
     .hero-map {
@@ -1873,6 +1981,20 @@ body::before {
         padding-top: env(safe-area-inset-top);
     }
 
+    .ets2-map-job-overlay {
+        top: 52px;
+        left: 10px;
+        width: min(320px, calc(100% - 20px));
+        max-width: calc(100% - 20px);
+        padding: 6px 8px;
+        gap: 2px;
+    }
+
+    .ets2-map-job-line,
+    .hero-map-job-line {
+        font-size: 0.64rem;
+    }
+
     .ets2-map-mode {
         max-width: calc(100% - 298px);
         overflow: hidden;
@@ -1906,41 +2028,50 @@ body::before {
         display: none;
     }
 
+    .hero-map-job-overlay {
+        top: 8px;
+        left: 8px;
+        width: min(280px, calc(100% - 16px));
+        max-width: calc(100% - 16px);
+        padding: 5px 7px;
+        gap: 2px;
+    }
+
     .route-line {
         width: 100%;
     }
 
     .speed-ring {
-        width: min(116px, 42vw);
+        width: min(106px, 36vw);
     }
 
     .speed-ring-inner {
-        padding: 19px 10px;
+        padding: 16px 8px;
         gap: 3px;
     }
 
     .speed-value {
-        font-size: clamp(1.2rem, 7.8vw, 1.75rem);
+        font-size: clamp(0.98rem, 6.6vw, 1.35rem);
     }
 
     .speed-unit {
-        top: 27px;
-        font-size: 0.47rem;
+        top: 20px;
+        font-size: 0.42rem;
     }
 
     .road-speed,
     .cruise-control-speed {
-        min-height: 15px;
-        font-size: 0.47rem;
+        min-height: 12px;
+        font-size: 0.41rem;
         padding: 1px 4px;
     }
 
     .road-speed {
-        top: 6px;
+        top: 15px;
     }
 
     .cruise-control-speed {
-        bottom: 6px;
+        bottom: 15px;
     }
 
     .ets2-map {
@@ -1966,37 +2097,56 @@ body::before {
         display: none;
     }
 
+    .hero-map-job-overlay {
+        width: min(220px, calc(100% - 14px));
+        max-width: calc(100% - 14px);
+        padding: 4px 6px;
+    }
+
+    .hero-map-job-line,
+    .ets2-map-job-line {
+        font-size: 0.6rem;
+    }
+
+    .ets2-map-job-overlay {
+        top: 48px;
+        left: 8px;
+        width: min(260px, calc(100% - 16px));
+        max-width: calc(100% - 16px);
+        padding: 5px 7px;
+    }
+
     .speed-ring {
-        width: min(102px, 46vw);
+        width: min(92px, 40vw);
     }
 
     .speed-ring-inner {
-        padding: 16px 9px;
+        padding: 14px 7px;
     }
 
     .speed-value {
-        font-size: clamp(1.05rem, 8vw, 1.45rem);
+        font-size: clamp(0.88rem, 7vw, 1.2rem);
     }
 
     .speed-unit {
-        top: 23px;
-        font-size: 0.44rem;
+        top: 18px;
+        font-size: 0.39rem;
     }
 
     .road-speed,
     .cruise-control-speed {
-        min-height: 13px;
-        font-size: 0.43rem;
-        padding: 1px 4px;
+        min-height: 11px;
+        font-size: 0.38rem;
+        padding: 1px 3px;
         max-width: calc(100% - 18px);
     }
 
     .road-speed {
-        top: 3px;
+        top: 15px;
     }
 
     .cruise-control-speed {
-        bottom: 3px;
+        bottom: 15px;
     }
 
     .route-time,

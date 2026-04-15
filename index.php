@@ -116,6 +116,11 @@ $json_flags = JSON_UNESCAPED_SLASHES
                     <button class="hero-map-button" type="button" data-hero-map-zoom="out" aria-label="Zoom hero map out">-</button>
                     <button class="hero-map-button" type="button" data-hero-map-zoom="in" aria-label="Zoom hero map in">+</button>
                 </div>
+                <div class="hero-map-job-overlay" id="hero-map-job-overlay" aria-live="polite">
+                    <span class="hero-map-job-line" id="hero-map-job-income">Income --</span>
+                    <span class="hero-map-job-line" id="hero-map-job-cargo">Job --</span>
+                    <span class="hero-map-job-line" id="hero-map-job-weight">Weight --</span>
+                </div>
             </div>
         </section>
 
@@ -278,6 +283,11 @@ $json_flags = JSON_UNESCAPED_SLASHES
                                     <button class="ets2-map-zoom-button" type="button" data-map-zoom="out" aria-label="Zoom out">-</button>
                                     <button class="ets2-map-zoom-button" type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
                                 </div>
+                            </div>
+                            <div class="ets2-map-job-overlay" id="ets2-map-job-overlay" aria-live="polite">
+                                <span class="ets2-map-job-line" id="map-job-income">Income --</span>
+                                <span class="ets2-map-job-line" id="map-job-cargo">Job --</span>
+                                <span class="ets2-map-job-line" id="map-job-weight">Weight --</span>
                             </div>
                             <div class="ets2-map-label" id="ets2-map-label" aria-live="polite">Truck position</div>
                         </div>

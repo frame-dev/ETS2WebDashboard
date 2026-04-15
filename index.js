@@ -106,6 +106,9 @@ const elements = {
     heroMapMarker: document.getElementById("hero-map-marker"),
     heroMapCenter: document.getElementById("hero-map-center"),
     heroMapShortcuts: document.getElementById("hero-map-shortcuts"),
+    heroMapJobIncome: document.getElementById("hero-map-job-income"),
+    heroMapJobCargo: document.getElementById("hero-map-job-cargo"),
+    heroMapJobWeight: document.getElementById("hero-map-job-weight"),
     mapBadge: document.getElementById("map-badge"),
     ets2Map: document.getElementById("ets2-map"),
     ets2MapStage: document.getElementById("ets2-map-stage"),
@@ -116,6 +119,9 @@ const elements = {
     ets2MapMode: document.getElementById("ets2-map-mode"),
     ets2MapCenter: document.getElementById("ets2-map-center"),
     ets2MapShortcuts: document.getElementById("ets2-map-shortcuts"),
+    mapJobIncome: document.getElementById("map-job-income"),
+    mapJobCargo: document.getElementById("map-job-cargo"),
+    mapJobWeight: document.getElementById("map-job-weight"),
     mapMeta: document.getElementById("map-meta"),
     routeBadge: document.getElementById("route-badge"),
     routeSource: document.getElementById("route-source"),
@@ -140,6 +146,15 @@ const tabButtons = Array.from(document.querySelectorAll("[data-tab]"));
 const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
 const mapZoomButtons = Array.from(document.querySelectorAll("[data-map-zoom]"));
 const heroMapZoomButtons = Array.from(document.querySelectorAll("[data-hero-map-zoom]"));
+const systemLocale = typeof navigator !== "undefined"
+    ? (navigator.languages?.[0] || navigator.language || "en-US")
+    : "en-US";
+const cityLocalizationState = {
+    loaded: false,
+    loading: false,
+    cityByKey: new Map(),
+    localeCandidates: buildLocaleCandidates(systemLocale),
+};
 
 let refreshTimer = null;
 let tileMapRetryTimer = null;
@@ -153,6 +168,150 @@ let telemetryConsecutiveFailures = 0;
 let telemetryLastSourceType = "upstream";
 let speedRingPeakKph = 0;
 let speedRingPreviousKph = null;
+
+function buildLocaleCandidates(locale) {
+    const raw = String(locale || "").trim().toLowerCase().replaceAll("-", "_");
+    const candidates = [];
+
+    if (raw) {
+        candidates.push(raw);
+        const [language] = raw.split("_");
+        if (language && language !== raw) {
+            candidates.push(language);
+        }
+    }
+
+    ["en_us", "en_gb", "en"].forEach((value) => {
+        if (!candidates.includes(value)) {
+            candidates.push(value);
+        }
+    });
+
+    return candidates;
+}
+
+function normalizeCityLookupKey(value) {
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ");
+}
+
+function pickLocalizedCityName(localizedNames, candidates) {
+    if (!localizedNames || typeof localizedNames !== "object") {
+        return null;
+    }
+
+    const entries = Object.entries(localizedNames).filter(([, value]) => typeof value === "string" && value.trim() !== "");
+    if (entries.length === 0) {
+        return null;
+    }
+
+    const normalized = new Map(entries.map(([key, value]) => [String(key).toLowerCase(), value]));
+
+    for (const candidate of candidates) {
+        if (normalized.has(candidate)) {
+            return normalized.get(candidate) || null;
+        }
+    }
+
+    for (const candidate of candidates) {
+        if (!candidate.includes("_")) {
+            const prefixed = `${candidate}_`;
+            const key = Array.from(normalized.keys()).find((name) => name.startsWith(prefixed));
+            if (key) {
+                return normalized.get(key) || null;
+            }
+        }
+    }
+
+    return entries[0][1] || null;
+}
+
+function localizeCityName(cityName) {
+    if (typeof cityName !== "string" || cityName.trim() === "") {
+        return cityName;
+    }
+
+    const key = normalizeCityLookupKey(cityName);
+    const match = cityLocalizationState.cityByKey.get(key);
+    if (!match) {
+        return cityName;
+    }
+
+    const localized = pickLocalizedCityName(match.localizedNames, cityLocalizationState.localeCandidates);
+    return localized || match.name || cityName;
+}
+
+function formatLocalizedRouteLocation(cityName, companyName, fallback) {
+    if (typeof cityName !== "string" || cityName.trim() === "") {
+        return fallback;
+    }
+
+    const localizedCity = localizeCityName(cityName);
+    return `${localizedCity}${companyName ? ` • ${companyName}` : ""}`;
+}
+
+function loadCityLocalizations() {
+    if (cityLocalizationState.loaded || cityLocalizationState.loading) {
+        return;
+    }
+
+    cityLocalizationState.loading = true;
+    window.fetch("tiles/Cities.json", { cache: "force-cache" })
+        .then((response) => {
+            if (!response.ok) {
+                throw new Error(`Failed to load city localizations (${response.status})`);
+            }
+
+            return response.json();
+        })
+        .then((payload) => {
+            if (!Array.isArray(payload)) {
+                return;
+            }
+
+            const lookup = new Map();
+            payload.forEach((city) => {
+                const baseName = typeof city?.Name === "string" ? city.Name : "";
+                if (!baseName) {
+                    return;
+                }
+
+                const localizedNames = city?.LocalizedNames && typeof city.LocalizedNames === "object"
+                    ? city.LocalizedNames
+                    : {};
+                const entry = { name: baseName, localizedNames };
+                const aliases = [
+                    baseName,
+                    ...Object.values(localizedNames).filter((value) => typeof value === "string"),
+                ];
+
+                aliases.forEach((alias) => {
+                    const aliasKey = normalizeCityLookupKey(alias);
+                    if (aliasKey && !lookup.has(aliasKey)) {
+                        lookup.set(aliasKey, entry);
+                    }
+                });
+            });
+
+            cityLocalizationState.cityByKey = lookup;
+            cityLocalizationState.loaded = true;
+
+            if (latestTelemetryData) {
+                renderRoute(latestTelemetryData);
+                renderMap(latestTelemetryData);
+            }
+        })
+        .catch(() => {
+            // Ignore localization fetch failures and keep telemetry rendering with source names.
+        })
+        .finally(() => {
+            cityLocalizationState.loading = false;
+        });
+}
 
 function clampTelemetryDelay(value) {
     const parsed = Number(value);
@@ -470,7 +629,18 @@ function formatPressure(value) {
 
 function formatMass(value) {
     const parsed = getNumber(value);
-    return parsed === null ? "--" : `${formatNumber(parsed, parsed < 100 ? 1 : 0)} kg`;
+    if (parsed === null) {
+        return "--";
+    }
+
+    const tonnes = parsed / 1000;
+    const digits = tonnes < 10 ? 2 : 1;
+    return `${formatNumber(tonnes, digits)} t`;
+}
+
+function formatIncome(value) {
+    const parsed = getNumber(value);
+    return parsed === null ? "--" : formatNumber(parsed, 0);
 }
 
 function formatCoordinate(value) {
@@ -1657,12 +1827,8 @@ function renderRoute(data) {
     const game = data.game || {};
     const gameplay = data.gameplay || {};
     const hasJob = Boolean(gameplay.onJob || job.sourceCity || job.destinationCity || job.cargo);
-    const fromLocation = job.sourceCity
-        ? `${job.sourceCity}${job.sourceCompany ? ` • ${job.sourceCompany}` : ""}`
-        : "No active pickup";
-    const toLocation = job.destinationCity
-        ? `${job.destinationCity}${job.destinationCompany ? ` • ${job.destinationCompany}` : ""}`
-        : "No destination";
+    const fromLocation = formatLocalizedRouteLocation(job.sourceCity, job.sourceCompany, "No active pickup");
+    const toLocation = formatLocalizedRouteLocation(job.destinationCity, job.destinationCompany, "No destination");
 
     if (elements.routeBadge) {
         elements.routeBadge.textContent = hasJob ? "Active" : "Idle";
@@ -1912,10 +2078,39 @@ function renderWorld(data) {
 function renderMap(data) {
     const truck = data.truck || {};
     const job = data.job || {};
+    const gameplay = data.gameplay || {};
     const x = getNumber(truck.placement?.x);
     const z = getNumber(truck.placement?.z);
     const heading = getNumber(truck.placement?.heading) ?? 0;
     const hasPosition = x !== null && z !== null;
+    const hasJob = Boolean(gameplay.onJob || job.cargo || job.sourceCity || job.destinationCity);
+    const incomeText = hasJob ? `Income €${formatIncome(job.income)}` : "Income --";
+    const cargoText = hasJob ? `Job ${job.cargo || "Unknown cargo"}` : "Job --";
+    const weightText = hasJob ? `Weight ${formatMass(job.cargoMass)}` : "Weight --";
+
+    if (elements.mapJobIncome) {
+        elements.mapJobIncome.textContent = incomeText;
+    }
+
+    if (elements.mapJobCargo) {
+        elements.mapJobCargo.textContent = cargoText;
+    }
+
+    if (elements.mapJobWeight) {
+        elements.mapJobWeight.textContent = weightText;
+    }
+
+    if (elements.heroMapJobIncome) {
+        elements.heroMapJobIncome.textContent = incomeText;
+    }
+
+    if (elements.heroMapJobCargo) {
+        elements.heroMapJobCargo.textContent = cargoText;
+    }
+
+    if (elements.heroMapJobWeight) {
+        elements.heroMapJobWeight.textContent = weightText;
+    }
 
     if (elements.mapBadge) {
         elements.mapBadge.textContent = hasPosition ? (tileMapState.initialized ? "Tiles live" : "Tracking") : "Waiting";
@@ -1980,7 +2175,7 @@ function renderMap(data) {
     const labelParts = [truck.licensePlate || "Truck"];
 
     if (job.destinationCity) {
-        labelParts.push(`to ${job.destinationCity}`);
+        labelParts.push(`to ${localizeCityName(job.destinationCity)}`);
     }
 
     if (tileMapState.initialized && tileMapState.config && elements.ets2MapStage) {
@@ -2288,6 +2483,7 @@ try {
 }
 
 loadMapPreferences();
+loadCityLocalizations();
 
 startTelemetryPolling();
 
