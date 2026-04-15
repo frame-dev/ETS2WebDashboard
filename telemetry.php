@@ -1,15 +1,119 @@
 <?php
-define("TELEMETRY_URL", "http://127.0.0.1:31377/api/ets2/telemetry");
-define("TELEMETRY_REFRESH_INTERVAL_MS", 250);
+declare(strict_types=1);
 
-function fetch_telemetry_data($telemetry_url = TELEMETRY_URL) {
-    $telemetry_data = @file_get_contents($telemetry_url);
-    if ($telemetry_data === false) {
-        return [];
+require_once __DIR__ . '/config.php';
+
+define("TELEMETRY_URL", (string) dashboard_config_value("telemetry.upstreamUrl", "http://127.0.0.1:31377/api/ets2/telemetry"));
+define("TELEMETRY_REFRESH_INTERVAL_MS", (int) dashboard_config_value("telemetry.refreshIntervalMs", 250));
+
+function telemetry_http_status_code(array $headers): ?int {
+    if (!isset($headers[0]) || !is_string($headers[0])) {
+        return null;
     }
 
-    $json_data = json_decode($telemetry_data, true);
-    return is_array($json_data) ? $json_data : [];
+    if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $headers[0], $matches) === 1) {
+        return (int) $matches[1];
+    }
+
+    return null;
+}
+
+function telemetry_cache_read(string $cachePath, int $cacheTtlMs): ?array {
+    if (!is_file($cachePath)) {
+        return null;
+    }
+
+    $raw = @file_get_contents($cachePath);
+    if ($raw === false) {
+        return null;
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return null;
+    }
+
+    $cachedAtMs = (int) ($decoded['cachedAtMs'] ?? 0);
+    $nowMs = (int) floor(microtime(true) * 1000);
+    if ($cachedAtMs <= 0 || ($nowMs - $cachedAtMs) > max(0, $cacheTtlMs)) {
+        return null;
+    }
+
+    $data = $decoded['data'] ?? null;
+    return is_array($data) ? $data : null;
+}
+
+function telemetry_cache_write(string $cachePath, array $data): void {
+    $cacheDir = dirname($cachePath);
+    if (!is_dir($cacheDir)) {
+        @mkdir($cacheDir, 0777, true);
+    }
+
+    if (!is_dir($cacheDir) || !is_writable($cacheDir)) {
+        return;
+    }
+
+    $payload = [
+        'cachedAtMs' => (int) floor(microtime(true) * 1000),
+        'data' => $data,
+    ];
+
+    @file_put_contents($cachePath, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+function fetch_telemetry_data($telemetry_url = TELEMETRY_URL, &$source = null) {
+    $source = [
+        'type' => 'none',
+        'statusCode' => null,
+        'error' => null,
+    ];
+
+    $timeoutMs = (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500);
+    $timeoutSeconds = max(1.0, $timeoutMs / 1000);
+    $cacheEnabled = (bool) dashboard_config_value('telemetry.cacheEnabled', true);
+    $cacheTtlMs = (int) dashboard_config_value('telemetry.cacheTtlMs', 10000);
+    $cachePath = (string) dashboard_config_value('telemetry.cacheFile', __DIR__ . '/tmp/telemetry-cache.json');
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => $timeoutSeconds,
+            'header' => "Accept: application/json\r\nUser-Agent: ETS2WebDashboard/1.0\r\n",
+            'ignore_errors' => true,
+        ],
+    ]);
+
+    $telemetry_data = @file_get_contents($telemetry_url, false, $context);
+    $responseHeaders = $http_response_header ?? [];
+    $statusCode = telemetry_http_status_code(is_array($responseHeaders) ? $responseHeaders : []);
+    $source['statusCode'] = $statusCode;
+
+    if ($telemetry_data !== false && $statusCode !== null && $statusCode >= 200 && $statusCode < 300) {
+        $json_data = json_decode($telemetry_data, true);
+        if (is_array($json_data)) {
+            if ($cacheEnabled) {
+                telemetry_cache_write($cachePath, $json_data);
+            }
+
+            $source['type'] = 'upstream';
+            return $json_data;
+        }
+
+        $source['error'] = 'Invalid JSON in upstream response';
+    } else {
+        $source['error'] = $telemetry_data === false
+            ? 'Unable to reach telemetry upstream'
+            : 'Telemetry upstream returned non-success status';
+    }
+
+    if ($cacheEnabled) {
+        $cachedData = telemetry_cache_read($cachePath, $cacheTtlMs);
+        if (is_array($cachedData)) {
+            $source['type'] = 'cache';
+            return $cachedData;
+        }
+    }
+
+    $source['type'] = 'none';
+    return [];
 }
 
 function get_telemetry_refresh_interval_ms() {
@@ -420,18 +524,27 @@ function get_train_target_name($json_data) { return get_telemetry_value($json_da
 function get_refuel_details($json_data) { return get_telemetry_value($json_data, "gameplay.refuelDetails"); }
 function get_refuel_amount($json_data) { return get_telemetry_value($json_data, "gameplay.refuelDetails.amount"); }
 
-$json_data = fetch_telemetry_data();
+$telemetry_source = null;
+$json_data = fetch_telemetry_data(TELEMETRY_URL, $telemetry_source);
 
 if (
     basename(__FILE__) === basename($_SERVER["SCRIPT_FILENAME"] ?? "") &&
     (($_GET["format"] ?? "") === "json")
 ) {
-    header("Content-Type: application/json");
+    $jsonFlags = JSON_UNESCAPED_SLASHES;
+    if ((bool) dashboard_config_value('telemetry.jsonPrettyPrint', true)) {
+        $jsonFlags |= JSON_PRETTY_PRINT;
+    }
+
+    header("Content-Type: application/json; charset=utf-8");
+    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    header("Pragma: no-cache");
     echo json_encode([
         "refreshIntervalMs" => get_telemetry_refresh_interval_ms(),
         "fetchedAt" => gmdate("c"),
+        "source" => $telemetry_source,
         "data" => $json_data,
-    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    ], $jsonFlags);
     exit;
 }
 ?>

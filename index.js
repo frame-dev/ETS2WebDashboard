@@ -2,16 +2,24 @@ const config = window.dashboardConfig || {};
 const telemetryEndpoint = config.telemetryEndpoint || "telemetry.php?format=json";
 const refreshIntervalMs = Number(config.refreshIntervalMs) || 5000;
 const telemetryRequestTimeoutMs = Number(config.telemetryRequestTimeoutMs) || Math.max(2500, refreshIntervalMs - 500);
-const activeTabStorageKey = "ets2-dashboard-active-tab";
-const mapPreferencesStorageKey = "ets2-dashboard-map-preferences";
+const telemetryPollingConfig = config.telemetryPolling || {};
+const speedRingConfig = config.speedRing || {};
+const speedRingMaxDisplayKph = Number(speedRingConfig.maxDisplayKph) || 130;
+const speedRingOverspeedToleranceKph = Number(speedRingConfig.overspeedToleranceKph) || 2;
+const speedRingTrendSensitivityKph = Number(speedRingConfig.trendSensitivityKph) || 0.8;
+const telemetryBackoffStepMs = Number(telemetryPollingConfig.backoffStepMs) || 1000;
+const telemetryMaxBackoffMs = Number(telemetryPollingConfig.maxBackoffMs) || 30000;
+const telemetryHiddenIntervalMs = Number(telemetryPollingConfig.hiddenIntervalMs) || 12000;
+const activeTabStorageKey = (config.storageKeys && config.storageKeys.activeTab) || "ets2-dashboard-active-tab";
+const mapPreferencesStorageKey = (config.storageKeys && config.storageKeys.mapPreferences) || "ets2-dashboard-map-preferences";
 const tabsRoot = document.querySelector(".section-tabs");
-const routePlannerAverageKph = 63;
-const routePlannerRealTimeScale = 17.5;
+const routePlannerAverageKph = Number(config.routePlanner?.averageKph) || 63;
+const routePlannerRealTimeScale = Number(config.routePlanner?.realTimeScale) || 17.5;
 const ets2MapBounds = {
-    minX: -94118.3,
-    maxX: 128280,
-    minZ: -102857,
-    maxZ: 57201.3,
+    minX: Number(config.mapBounds?.minX) || -94118.3,
+    maxX: Number(config.mapBounds?.maxX) || 128280,
+    minZ: Number(config.mapBounds?.minZ) || -102857,
+    maxZ: Number(config.mapBounds?.maxZ) || 57201.3,
 };
 const tileMapConfig = config.mapTiles || {};
 const tileMapState = {
@@ -68,6 +76,10 @@ const elements = {
     heroSummary: document.getElementById("hero-summary"),
     heroTags: document.getElementById("hero-tags"),
     heroSpeedValue: document.getElementById("hero-speed-value"),
+    speedPeak: document.getElementById("speed-peak"),
+    speedTrend: document.getElementById("speed-trend"),
+    speedAlert: document.getElementById("speed-alert"),
+    speedLimitMarker: document.getElementById("speed-limit-marker"),
     roadSpeedValue: document.getElementById("road-speed-value"),
     cruiseControlSpeed: document.getElementById("cruise-control-speed"),
     speedRing: document.getElementById("speed-ring"),
@@ -137,6 +149,79 @@ let telemetryAbortController = null;
 let telemetryTimeoutHandle = null;
 let hasLoadedMapPreferences = false;
 let activeMapTarget = "world";
+let telemetryConsecutiveFailures = 0;
+let telemetryLastSourceType = "upstream";
+let speedRingPeakKph = 0;
+let speedRingPreviousKph = null;
+
+function clampTelemetryDelay(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return refreshIntervalMs;
+    }
+
+    return Math.max(250, Math.min(parsed, telemetryMaxBackoffMs));
+}
+
+function getNextTelemetryDelayMs() {
+    let delay = refreshIntervalMs;
+
+    if (telemetryConsecutiveFailures > 0) {
+        delay = Math.min(
+            refreshIntervalMs + (telemetryConsecutiveFailures * telemetryBackoffStepMs),
+            telemetryMaxBackoffMs,
+        );
+    }
+
+    if (telemetryLastSourceType === "cache") {
+        delay = Math.max(delay, Math.min(telemetryMaxBackoffMs, refreshIntervalMs * 2));
+    }
+
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        delay = Math.max(delay, telemetryHiddenIntervalMs);
+    }
+
+    return clampTelemetryDelay(delay);
+}
+
+function scheduleTelemetryUpdate(delayMs = refreshIntervalMs) {
+    if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+    }
+
+    const normalizedDelay = clampTelemetryDelay(delayMs);
+    refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        updateTelemetry();
+    }, normalizedDelay);
+}
+
+function applyTelemetrySourceStatus(payload) {
+    const source = payload?.source || null;
+    const sourceType = source && typeof source.type === "string" ? source.type : "upstream";
+
+    telemetryLastSourceType = sourceType;
+
+    if (sourceType === "upstream") {
+        telemetryConsecutiveFailures = 0;
+        setConnectionState("Connected", "connected");
+        return;
+    }
+
+    if (sourceType === "cache") {
+        telemetryConsecutiveFailures = 0;
+        setConnectionState("Cached", "cached");
+        if (elements.heroSummary) {
+            const current = elements.heroSummary.textContent || "";
+            if (!current.includes("cached snapshot")) {
+                elements.heroSummary.textContent = `${current} • Using cached snapshot`;
+            }
+        }
+        return;
+    }
+
+    setConnectionState("Disconnected", "error");
+}
 
 function setActiveMapTarget(target) {
     if (target === "world" || target === "hero") {
@@ -331,6 +416,16 @@ function formatRoadSpeed(speedKph) {
 
     const safe = Math.max(0, parsed);
     return formatNumber(safe, safe < 10 ? 1 : 0);
+}
+
+function normalizeRoadLimitKph(speedLimitValue) {
+    const parsed = getNumber(speedLimitValue);
+    if (parsed === null) {
+        return null;
+    }
+
+    // Some telemetry sources report km/h while others report m/s.
+    return parsed > 45 ? parsed : parsed * 3.6;
 }
 
 function formatPercent(value, digits = 0, ratio = false) {
@@ -1406,7 +1501,17 @@ function renderHero(data) {
 
     const truckName = [truck.make, truck.model].filter(Boolean).join(" ");
     const speedKph = getNumber(truck.speed) === null ? 0 : Math.max(0, Number(truck.speed) * 3.6);
-    const progress = Math.min(speedKph / 130, 1) * 100;
+    const progress = Math.min(speedKph / speedRingMaxDisplayKph, 1) * 100;
+    const roadLimitKph = normalizeRoadLimitKph(navigation.speedLimit);
+    const isOverspeed = roadLimitKph !== null && speedKph > (roadLimitKph + speedRingOverspeedToleranceKph);
+    const speedDelta = speedRingPreviousKph === null ? 0 : speedKph - speedRingPreviousKph;
+    const trendState = speedDelta > speedRingTrendSensitivityKph
+        ? "rising"
+        : speedDelta < -speedRingTrendSensitivityKph
+            ? "falling"
+            : "steady";
+    speedRingPreviousKph = speedKph;
+    speedRingPeakKph = Math.max(speedRingPeakKph, speedKph);
     const plate = truck.licensePlate || "No plate";
     const gameClock = formatGameClock(game.time);
 
@@ -1426,10 +1531,44 @@ function renderHero(data) {
     if (elements.heroSpeedValue) {
         elements.heroSpeedValue.textContent = formatTruckSpeed(truck.speed);
         if (elements.roadSpeedValue) {
-            elements.roadSpeedValue.textContent = `Road limit ${formatTruckSpeed(navigation.speedLimit)}`;
+            elements.roadSpeedValue.textContent = roadLimitKph === null
+                ? "Road limit --"
+                : `Road limit ${formatRoadSpeed(roadLimitKph)} km/h`;
         }
         if (elements.cruiseControlSpeed) {
             elements.cruiseControlSpeed.textContent = truck.cruiseControlOn ? `Tempomat ${formatTruckSpeed(truck.cruiseControlSpeed)} km/h` : "Tempomat inactive";
+        }
+    }
+
+    if (elements.speedPeak) {
+        elements.speedPeak.textContent = `Peak ${formatNumber(speedRingPeakKph, speedRingPeakKph < 10 ? 1 : 0)} km/h`;
+    }
+
+    if (elements.speedTrend) {
+        const trendLabel = trendState === "rising"
+            ? `Rising +${formatNumber(Math.abs(speedDelta), 1)}`
+            : trendState === "falling"
+                ? `Falling -${formatNumber(Math.abs(speedDelta), 1)}`
+                : "Steady";
+        elements.speedTrend.textContent = trendLabel;
+        elements.speedTrend.dataset.trend = trendState;
+    }
+
+    if (elements.speedAlert) {
+        elements.speedAlert.textContent = isOverspeed
+            ? `Overspeed +${formatNumber(Math.max(0, speedKph - (roadLimitKph ?? speedKph)), 1)} km/h`
+            : "";
+        elements.speedAlert.dataset.active = isOverspeed ? "true" : "false";
+    }
+
+    if (elements.speedLimitMarker) {
+        if (roadLimitKph === null) {
+            elements.speedLimitMarker.style.opacity = "0";
+        } else {
+            const limitProgress = Math.min(Math.max(roadLimitKph / speedRingMaxDisplayKph, 0), 1);
+            const angleDeg = (limitProgress * 360) - 90;
+            elements.speedLimitMarker.style.opacity = "1";
+            elements.speedLimitMarker.style.setProperty("--speed-limit-angle", `${angleDeg}deg`);
         }
     }
 
@@ -1438,6 +1577,8 @@ function renderHero(data) {
 
         elements.speedRing.style.setProperty("--speed-progress", `${progress}%`);
         elements.speedRing.dataset.engineState = engineRunning ? "on" : "off";
+        elements.speedRing.dataset.overspeed = isOverspeed ? "true" : "false";
+        elements.speedRing.dataset.trend = trendState;
 
         if (!engineRunning) {
             elements.speedRing.style.setProperty("--ring-color", "var(--ring-color-off)");
@@ -1931,11 +2072,12 @@ function renderTelemetry(payload) {
     renderEvents(data);
     renderRawPayload(payload);
 
-    setConnectionState("Connected", "connected");
+    applyTelemetrySourceStatus(payload);
 }
 
 async function updateTelemetry() {
     if (telemetryRequestInFlight) {
+        scheduleTelemetryUpdate(Math.max(750, refreshIntervalMs));
         return;
     }
 
@@ -1963,8 +2105,11 @@ async function updateTelemetry() {
 
         const payload = await response.json();
         renderTelemetry(payload);
+        scheduleTelemetryUpdate(getNextTelemetryDelayMs());
     } catch (error) {
         const isAbort = error && typeof error === "object" && error.name === "AbortError";
+        telemetryConsecutiveFailures += 1;
+        telemetryLastSourceType = "none";
         setConnectionState("Connection failed", "error");
 
         if (elements.lastUpdated) {
@@ -1980,6 +2125,8 @@ async function updateTelemetry() {
         if (elements.telemetryOutput) {
             elements.telemetryOutput.textContent = error?.message || "Unknown telemetry error";
         }
+
+        scheduleTelemetryUpdate(getNextTelemetryDelayMs());
     } finally {
         telemetryRequestInFlight = false;
         telemetryAbortController = null;
@@ -1993,10 +2140,10 @@ async function updateTelemetry() {
 function startTelemetryPolling() {
     if (config.initialPayload) {
         renderTelemetry(config.initialPayload);
+        telemetryLastSourceType = config.initialPayload?.source?.type || "upstream";
     }
 
     updateTelemetry();
-    refreshTimer = window.setInterval(updateTelemetry, refreshIntervalMs);
 }
 
 if (tabsRoot) {
@@ -2103,7 +2250,7 @@ window.addEventListener("keydown", handleGlobalMapShortcuts);
 
 window.addEventListener("beforeunload", () => {
     if (refreshTimer !== null) {
-        window.clearInterval(refreshTimer);
+        window.clearTimeout(refreshTimer);
     }
 
     if (tileMapRetryTimer !== null) {
@@ -2116,6 +2263,17 @@ window.addEventListener("beforeunload", () => {
 
     telemetryAbortController?.abort();
 });
+
+if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+            scheduleTelemetryUpdate(200);
+            return;
+        }
+
+        scheduleTelemetryUpdate(getNextTelemetryDelayMs());
+    });
+}
 
 try {
     const storedTab = window.localStorage.getItem(activeTabStorageKey);

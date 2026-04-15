@@ -2,9 +2,18 @@
 
 declare(strict_types=1);
 
+require_once 'config.php';
 require_once 'telemetry.php';
 
+$app_config = dashboard_config();
+$app_title = (string) dashboard_config_value('app.pageTitle', 'ETS2 Command Dashboard');
+$app_description = (string) dashboard_config_value('app.metaDescription', 'Live ETS2 dashboard for telemetry, route status, systems, and map tracking.');
+$hero_eyebrow = (string) dashboard_config_value('app.heroEyebrow', 'Euro Truck Simulator 2');
+$hero_title = (string) dashboard_config_value('app.heroTitle', 'Command dashboard online');
+$hero_summary = (string) dashboard_config_value('app.heroSummary', 'Preparing a live operator view from your local telemetry feed.');
+
 $refresh_interval_ms = (int) get_telemetry_refresh_interval_ms();
+$frontend_config = is_array($app_config['frontend'] ?? null) ? $app_config['frontend'] : [];
 $initial_payload = [
     'refreshIntervalMs' => $refresh_interval_ms,
     'fetchedAt' => gmdate('c'),
@@ -12,14 +21,15 @@ $initial_payload = [
 ];
 
 $dashboard_config = [
-    'telemetryEndpoint' => 'telemetry.php?format=json',
+    'telemetryEndpoint' => (string) dashboard_config_value('frontend.telemetryEndpoint', 'telemetry.php?format=json'),
     'refreshIntervalMs' => $refresh_interval_ms,
-    'telemetryRequestTimeoutMs' => 4500,
-    'mapTiles' => [
-        'baseUrlCandidates' => ['tiles', 'maps', 'http://127.0.0.1:8081'],
-        'configNames' => ['config.json', 'TileMapInfo.json'],
-        'overzoomSteps' => 3,
-    ],
+    'telemetryRequestTimeoutMs' => (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500),
+    'telemetryPolling' => is_array($frontend_config['telemetryPolling'] ?? null) ? $frontend_config['telemetryPolling'] : [],
+    'speedRing' => is_array($frontend_config['speedRing'] ?? null) ? $frontend_config['speedRing'] : [],
+    'storageKeys' => is_array($frontend_config['storageKeys'] ?? null) ? $frontend_config['storageKeys'] : [],
+    'routePlanner' => is_array($frontend_config['routePlanner'] ?? null) ? $frontend_config['routePlanner'] : [],
+    'mapBounds' => is_array($frontend_config['mapBounds'] ?? null) ? $frontend_config['mapBounds'] : [],
+    'mapTiles' => is_array($frontend_config['mapTiles'] ?? null) ? $frontend_config['mapTiles'] : [],
     'initialPayload' => $initial_payload,
 ];
 
@@ -36,8 +46,8 @@ $json_flags = JSON_UNESCAPED_SLASHES
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Live ETS2 dashboard for telemetry, route status, systems, and map tracking.">
-    <title>ETS2 Command Dashboard</title>
+    <meta name="description" content="<?php echo htmlspecialchars($app_description, ENT_QUOTES, 'UTF-8'); ?>">
+    <title><?php echo htmlspecialchars($app_title, ENT_QUOTES, 'UTF-8'); ?></title>
     <link rel="stylesheet" href="index.css">
 </head>
 
@@ -48,19 +58,26 @@ $json_flags = JSON_UNESCAPED_SLASHES
     <main class="dashboard-shell">
         <section class="hero-panel">
             <div class="hero-copy">
-                <p class="eyebrow">Euro Truck Simulator 2</p>
-                <h1 id="hero-title">Command dashboard online</h1>
-                <p class="hero-summary" id="hero-summary">Preparing a live operator view from your local telemetry feed.</p>
+                <p class="eyebrow"><?php echo htmlspecialchars($hero_eyebrow, ENT_QUOTES, 'UTF-8'); ?></p>
+                <h1 id="hero-title"><?php echo htmlspecialchars($hero_title, ENT_QUOTES, 'UTF-8'); ?></h1>
+                <p class="hero-summary" id="hero-summary"><?php echo htmlspecialchars($hero_summary, ENT_QUOTES, 'UTF-8'); ?></p>
                 <div class="hero-tags" id="hero-tags"></div>
             </div>
 
             <div class="hero-speed">
                 <div class="speed-ring" id="speed-ring">
+                    <span class="speed-limit-marker" id="speed-limit-marker" aria-hidden="true"></span>
                     <div class="speed-ring-inner">
+                        <span class="speed-unit">km/h</span>
                         <span class="speed-value" id="hero-speed-value">0</span>
                         <span class="road-speed" id="road-speed-value">0</span>
                         <span class="cruise-control-speed" id="cruise-control-speed"></span>
                     </div>
+                </div>
+                <div class="speed-ring-stats" id="speed-ring-stats">
+                    <span class="speed-peak" id="speed-peak">Peak --</span>
+                    <span class="speed-trend" id="speed-trend">Trend --</span>
+                    <span class="speed-alert" id="speed-alert"></span>
                 </div>
                 <div class="speed-meta">
                     <div class="status-stack">
