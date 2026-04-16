@@ -12,6 +12,7 @@ const telemetryMaxBackoffMs = Number(telemetryPollingConfig.maxBackoffMs) || 300
 const telemetryHiddenIntervalMs = Number(telemetryPollingConfig.hiddenIntervalMs) || 12000;
 const activeTabStorageKey = (config.storageKeys && config.storageKeys.activeTab) || "ets2-dashboard-active-tab";
 const mapPreferencesStorageKey = (config.storageKeys && config.storageKeys.mapPreferences) || "ets2-dashboard-map-preferences";
+const tileProxyEndpoint = config.tileProxyEndpoint || "tile-proxy.php";
 const tabsRoot = document.querySelector(".section-tabs");
 const routePlannerAverageKph = Number(config.routePlanner?.averageKph) || 63;
 const routePlannerRealTimeScale = Number(config.routePlanner?.realTimeScale) || 17.5;
@@ -22,6 +23,12 @@ const ets2MapBounds = {
     maxZ: Number(config.mapBounds?.maxZ) || 57201.3,
 };
 const tileMapConfig = config.mapTiles || {};
+const defaultTileBaseUrlCandidates = [
+    "http://10.147.17.64/tiles/",
+    "tiles",
+    "maps",
+    "http://127.0.0.1:8081",
+];
 const tileMapState = {
     initialized: false,
     config: null,
@@ -81,7 +88,9 @@ const elements = {
     speedAlert: document.getElementById("speed-alert"),
     speedLimitMarker: document.getElementById("speed-limit-marker"),
     roadSpeedValue: document.getElementById("road-speed-value"),
+    roadSpeedLimit: document.getElementById("road-speed-limit"),
     cruiseControlSpeed: document.getElementById("cruise-control-speed"),
+    cruiseControlLimit: document.getElementById("tempomat-speed-limit"),
     speedRing: document.getElementById("speed-ring"),
     lastUpdated: document.getElementById("last-updated"),
     refreshInterval: document.getElementById("refresh-interval"),
@@ -109,6 +118,14 @@ const elements = {
     heroMapJobIncome: document.getElementById("hero-map-job-income"),
     heroMapJobCargo: document.getElementById("hero-map-job-cargo"),
     heroMapJobWeight: document.getElementById("hero-map-job-weight"),
+    jobFinishedPopup: document.getElementById("job-finished-popup"),
+    jobFinishedPopupBadge: document.getElementById("job-finished-popup-badge"),
+    jobFinishedPopupTitle: document.getElementById("job-finished-popup-title"),
+    jobFinishedPopupMeta: document.getElementById("job-finished-popup-meta"),
+    jobFinishedPopupRevenue: document.getElementById("job-finished-popup-revenue"),
+    jobFinishedPopupXp: document.getElementById("job-finished-popup-xp"),
+    jobFinishedPopupDistance: document.getElementById("job-finished-popup-distance"),
+    jobFinishedPopupParking: document.getElementById("job-finished-popup-parking"),
     mapBadge: document.getElementById("map-badge"),
     ets2Map: document.getElementById("ets2-map"),
     ets2MapStage: document.getElementById("ets2-map-stage"),
@@ -159,6 +176,10 @@ const cityLocalizationState = {
 let refreshTimer = null;
 let tileMapRetryTimer = null;
 let latestTelemetryData = null;
+let mapRenderFrameHandle = null;
+let mapRenderUsesAnimationFrame = false;
+let pendingMapRenderData = null;
+let pendingRouteRender = false;
 let telemetryRequestInFlight = false;
 let telemetryAbortController = null;
 let telemetryTimeoutHandle = null;
@@ -168,6 +189,12 @@ let telemetryConsecutiveFailures = 0;
 let telemetryLastSourceType = "upstream";
 let speedRingPeakKph = 0;
 let speedRingPreviousKph = null;
+let previousJobFinishedState = false;
+let previousJobDeliveredState = false;
+let jobFinishedPopupVisibleUntil = 0;
+let previousJobFinishedSignature = "";
+let jobFinishedPopupHydrated = false;
+const jobFinishedPopupDurationMs = 5000;
 
 function buildLocaleCandidates(locale) {
     const raw = String(locale || "").trim().toLowerCase().replaceAll("-", "_");
@@ -259,52 +286,62 @@ function loadCityLocalizations() {
         return;
     }
 
+    const baseUrlCandidates = Array.isArray(tileMapConfig.baseUrlCandidates) && tileMapConfig.baseUrlCandidates.length > 0
+        ? tileMapConfig.baseUrlCandidates
+        : defaultTileBaseUrlCandidates;
+    const prioritizedBaseUrls = Array.from(new Set([
+        tileMapState.baseUrl,
+        ...baseUrlCandidates,
+    ].filter((baseUrl) => typeof baseUrl === "string" && baseUrl.trim() !== "")));
+
     cityLocalizationState.loading = true;
-    window.fetch("tiles/Cities.json", { cache: "force-cache" })
-        .then((response) => {
-            if (!response.ok) {
-                throw new Error(`Failed to load city localizations (${response.status})`);
-            }
-
-            return response.json();
-        })
-        .then((payload) => {
-            if (!Array.isArray(payload)) {
-                return;
-            }
-
-            const lookup = new Map();
-            payload.forEach((city) => {
-                const baseName = typeof city?.Name === "string" ? city.Name : "";
-                if (!baseName) {
-                    return;
+    (async () => {
+        for (const baseUrl of prioritizedBaseUrls) {
+            try {
+                const response = await window.fetch(buildTileRequestUrl(baseUrl, "Cities.json"), { cache: "force-cache" });
+                if (!response.ok) {
+                    throw new Error(`Failed to load city localizations (${response.status})`);
                 }
 
-                const localizedNames = city?.LocalizedNames && typeof city.LocalizedNames === "object"
-                    ? city.LocalizedNames
-                    : {};
-                const entry = { name: baseName, localizedNames };
-                const aliases = [
-                    baseName,
-                    ...Object.values(localizedNames).filter((value) => typeof value === "string"),
-                ];
+                const payload = await response.json();
+                if (!Array.isArray(payload)) {
+                    continue;
+                }
 
-                aliases.forEach((alias) => {
-                    const aliasKey = normalizeCityLookupKey(alias);
-                    if (aliasKey && !lookup.has(aliasKey)) {
-                        lookup.set(aliasKey, entry);
+                const lookup = new Map();
+                payload.forEach((city) => {
+                    const baseName = typeof city?.Name === "string" ? city.Name : "";
+                    if (!baseName) {
+                        return;
                     }
+
+                    const localizedNames = city?.LocalizedNames && typeof city.LocalizedNames === "object"
+                        ? city.LocalizedNames
+                        : {};
+                    const entry = { name: baseName, localizedNames };
+                    const aliases = [
+                        baseName,
+                        ...Object.values(localizedNames).filter((value) => typeof value === "string"),
+                    ];
+
+                    aliases.forEach((alias) => {
+                        const aliasKey = normalizeCityLookupKey(alias);
+                        if (aliasKey && !lookup.has(aliasKey)) {
+                            lookup.set(aliasKey, entry);
+                        }
+                    });
                 });
-            });
 
-            cityLocalizationState.cityByKey = lookup;
-            cityLocalizationState.loaded = true;
+                cityLocalizationState.cityByKey = lookup;
+                cityLocalizationState.loaded = true;
 
-            if (latestTelemetryData) {
-                renderRoute(latestTelemetryData);
-                renderMap(latestTelemetryData);
+                rerenderMapsFromLatestData(true);
+                return;
+            } catch (error) {
+                // Try the next configured source.
             }
-        })
+        }
+    })()
         .catch(() => {
             // Ignore localization fetch failures and keep telemetry rendering with source names.
         })
@@ -411,11 +448,69 @@ function updateMapInteractionHints() {
     }
 }
 
+function getLatestRenderableTelemetryData() {
+    if (latestTelemetryData && typeof latestTelemetryData === "object") {
+        return latestTelemetryData;
+    }
+
+    const initialData = config.initialPayload?.data;
+    return initialData && typeof initialData === "object" ? initialData : null;
+}
+
+function flushScheduledMapRender() {
+    mapRenderFrameHandle = null;
+
+    const data = pendingMapRenderData || getLatestRenderableTelemetryData();
+    const shouldRenderRoute = pendingRouteRender;
+
+    pendingMapRenderData = null;
+    pendingRouteRender = false;
+
+    if (!data) {
+        return;
+    }
+
+    if (shouldRenderRoute) {
+        renderRoute(data);
+    }
+
+    renderMap(data);
+}
+
+function scheduleMapRender(data = null, includeRoute = false) {
+    if (data && typeof data === "object") {
+        pendingMapRenderData = data;
+    } else if (!pendingMapRenderData) {
+        pendingMapRenderData = getLatestRenderableTelemetryData();
+    }
+
+    pendingRouteRender = pendingRouteRender || includeRoute;
+
+    if (mapRenderFrameHandle !== null) {
+        return;
+    }
+
+    if (typeof window.requestAnimationFrame === "function") {
+        mapRenderUsesAnimationFrame = true;
+        mapRenderFrameHandle = window.requestAnimationFrame(() => {
+            flushScheduledMapRender();
+        });
+        return;
+    }
+
+    mapRenderUsesAnimationFrame = false;
+    mapRenderFrameHandle = window.setTimeout(() => {
+        flushScheduledMapRender();
+    }, 16);
+}
+
+function rerenderMapsFromLatestData(includeRoute = false) {
+    scheduleMapRender(null, includeRoute);
+}
+
 function centerWorldMap() {
     setMapFollowTruck(true);
-    if (latestTelemetryData) {
-        renderMap(latestTelemetryData);
-    }
+    rerenderMapsFromLatestData();
 }
 
 function centerHeroMap(resetZoom = true) {
@@ -425,9 +520,7 @@ function centerHeroMap(resetZoom = true) {
 
     setHeroMapFollowTruck(true);
     persistMapPreferences();
-    if (latestTelemetryData) {
-        renderMap(latestTelemetryData);
-    }
+    rerenderMapsFromLatestData();
 }
 
 function isEditableTarget(target) {
@@ -641,6 +734,29 @@ function formatMass(value) {
 function formatIncome(value) {
     const parsed = getNumber(value);
     return parsed === null ? "--" : formatNumber(parsed, 0);
+}
+
+function formatIncomeLabel(value) {
+    const formatted = formatIncome(value);
+    return formatted === "--" ? "Income --" : `Income ${formatted}`;
+}
+
+function buildJobFinishedSignature(gameplay = {}, job = {}) {
+    const delivery = gameplay.jobDeliveredDetails || {};
+    const signatureParts = [
+        delivery.revenue,
+        delivery.earnedXp,
+        delivery.distanceKm,
+        delivery.deliveryTime,
+        delivery.autoParked ? "auto" : "manual",
+        job.cargo,
+        job.sourceCity,
+        job.destinationCity,
+    ]
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => value !== "");
+
+    return signatureParts.join("|");
 }
 
 function formatCoordinate(value) {
@@ -1014,13 +1130,30 @@ function joinUrlParts(baseUrl, path) {
     return normalizedBase ? `${normalizedBase}/${normalizedPath}` : normalizedPath;
 }
 
+function isAbsoluteHttpUrl(value) {
+    return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+function buildTileRequestUrl(baseUrl, path) {
+    const resourceUrl = joinUrlParts(baseUrl, path);
+    if (!resourceUrl) {
+        return "";
+    }
+
+    if (!isAbsoluteHttpUrl(baseUrl)) {
+        return resourceUrl;
+    }
+
+    return `${tileProxyEndpoint}?url=${encodeURIComponent(resourceUrl)}`;
+}
+
 function buildTileUrl(baseUrl, tileTemplate, zoom, x, y) {
     const path = String(tileTemplate || "")
         .replace("{z}", String(zoom))
         .replace("{x}", String(x))
         .replace("{y}", String(y));
 
-    return joinUrlParts(baseUrl, path);
+    return buildTileRequestUrl(baseUrl, path);
 }
 
 async function tileExists(baseUrl, tileTemplate, zoom, x, y) {
@@ -1171,14 +1304,14 @@ async function initializeTileMap() {
 
     const baseUrlCandidates = Array.isArray(tileMapConfig.baseUrlCandidates) && tileMapConfig.baseUrlCandidates.length > 0
         ? tileMapConfig.baseUrlCandidates
-        : ["tiles"];
+        : defaultTileBaseUrlCandidates;
     const configNames = Array.isArray(tileMapConfig.configNames) && tileMapConfig.configNames.length > 0
         ? tileMapConfig.configNames
         : ["config.json", "TileMapInfo.json"];
 
     for (const baseUrl of baseUrlCandidates) {
         for (const configName of configNames) {
-            const configUrl = joinUrlParts(baseUrl, configName);
+            const configUrl = buildTileRequestUrl(baseUrl, configName);
 
             try {
                 const rawConfig = await tryFetchJson(configUrl);
@@ -1212,9 +1345,7 @@ async function initializeTileMap() {
 
                 updateMapModeLabel();
                 persistMapPreferences();
-                if (latestTelemetryData) {
-                    renderMap(latestTelemetryData);
-                }
+                rerenderMapsFromLatestData();
                 return;
             } catch (error) {
                 // Keep trying the next candidate.
@@ -1479,9 +1610,7 @@ function handleHeroMapPointerMove(event) {
     }
 
     heroMapState.manualCenter = nextCenter;
-    if (latestTelemetryData) {
-        renderMap(latestTelemetryData);
-    }
+    rerenderMapsFromLatestData();
 }
 
 function handleHeroMapPointerEnd(event) {
@@ -1530,9 +1659,7 @@ function applyWorldMapZoom(delta) {
 
     tileMapState.zoom = nextZoom;
     persistMapPreferences();
-    if (latestTelemetryData) {
-        renderMap(latestTelemetryData);
-    }
+    rerenderMapsFromLatestData();
 }
 
 function applyHeroMapZoom(delta) {
@@ -1547,9 +1674,7 @@ function applyHeroMapZoom(delta) {
 
     heroMapState.zoom = nextZoom;
     persistMapPreferences();
-    if (latestTelemetryData) {
-        renderMap(latestTelemetryData);
-    }
+    rerenderMapsFromLatestData();
 }
 
 function handleMapPointerDown(event) {
@@ -1587,9 +1712,7 @@ function handleMapPointerMove(event) {
     }
 
     tileMapState.manualCenter = nextCenter;
-    if (latestTelemetryData) {
-        renderMap(latestTelemetryData);
-    }
+    rerenderMapsFromLatestData();
 }
 
 function handleMapPointerEnd(event) {
@@ -1700,13 +1823,13 @@ function renderHero(data) {
 
     if (elements.heroSpeedValue) {
         elements.heroSpeedValue.textContent = formatTruckSpeed(truck.speed);
-        if (elements.roadSpeedValue) {
-            elements.roadSpeedValue.textContent = roadLimitKph === null
-                ? "Road limit --"
-                : `Road limit ${formatRoadSpeed(roadLimitKph)} km/h`;
+        if (elements.roadSpeedLimit) {
+            elements.roadSpeedLimit.textContent = roadLimitKph === null
+                ? "--"
+                : `${formatRoadSpeed(roadLimitKph)}`;
         }
-        if (elements.cruiseControlSpeed) {
-            elements.cruiseControlSpeed.textContent = truck.cruiseControlOn ? `Tempomat ${formatTruckSpeed(truck.cruiseControlSpeed)} km/h` : "Tempomat inactive";
+        if (elements.cruiseControlLimit) {
+            elements.cruiseControlLimit.textContent = truck.cruiseControlOn ? `${formatTruckSpeed(truck.cruiseControlSpeed)}` : "--";
         }
     }
 
@@ -1770,6 +1893,73 @@ function renderHero(data) {
 
         elements.heroTags.innerHTML = heroTagItems.join("");
     }
+}
+
+function renderJobFinishedPopup(data) {
+    if (!elements.jobFinishedPopup) {
+        return;
+    }
+
+    const gameplay = data.gameplay || {};
+    const job = data.job || {};
+    const delivery = gameplay.jobDeliveredDetails || {};
+    const jobFinished = Boolean(gameplay.jobFinished);
+    const jobDelivered = Boolean(gameplay.jobDelivered);
+    const deliverySignature = buildJobFinishedSignature(gameplay, job);
+    const hasDeliveryDetails = deliverySignature !== "";
+    if (elements.jobFinishedPopup.classList.contains("is-visible") && !jobFinishedPopupHydrated && hasDeliveryDetails) {
+        jobFinishedPopupVisibleUntil = Date.now() + jobFinishedPopupDurationMs;
+    }
+    jobFinishedPopupHydrated = true;
+
+    const hasFreshDeliveryEvent =
+        (jobFinished && !previousJobFinishedState)
+        || (jobDelivered && !previousJobDeliveredState)
+        || (hasDeliveryDetails && deliverySignature !== previousJobFinishedSignature);
+
+    if (hasFreshDeliveryEvent) {
+        jobFinishedPopupVisibleUntil = Date.now() + jobFinishedPopupDurationMs;
+    }
+    previousJobFinishedState = jobFinished;
+    previousJobDeliveredState = jobDelivered;
+    if (hasDeliveryDetails) {
+        previousJobFinishedSignature = deliverySignature;
+    }
+
+    const cargo = typeof job.cargo === "string" && job.cargo.trim() !== ""
+        ? job.cargo.trim()
+        : "Delivery completed";
+    const routeParts = [job.sourceCity, job.destinationCity]
+        .filter((value) => typeof value === "string" && value.trim() !== "")
+        .map((value) => value.trim());
+    const route = routeParts.length > 0 ? routeParts.join(" -> ") : "Route unavailable";
+    const isVisible = hasDeliveryDetails && Date.now() < jobFinishedPopupVisibleUntil;
+
+    if (elements.jobFinishedPopupBadge) {
+        elements.jobFinishedPopupBadge.textContent = jobDelivered ? "Delivery complete" : "Job finished";
+    }
+    if (elements.jobFinishedPopupTitle) {
+        elements.jobFinishedPopupTitle.textContent = cargo;
+    }
+    if (elements.jobFinishedPopupMeta) {
+        elements.jobFinishedPopupMeta.textContent = route;
+    }
+    if (elements.jobFinishedPopupRevenue) {
+        elements.jobFinishedPopupRevenue.textContent = formatIncomeLabel(delivery.revenue);
+    }
+    if (elements.jobFinishedPopupXp) {
+        const xp = formatNumber(delivery.earnedXp, 0);
+        elements.jobFinishedPopupXp.textContent = xp === "--" ? "XP --" : `XP ${xp}`;
+    }
+    if (elements.jobFinishedPopupDistance) {
+        elements.jobFinishedPopupDistance.textContent = formatDistanceKm(delivery.distanceKm);
+    }
+    if (elements.jobFinishedPopupParking) {
+        elements.jobFinishedPopupParking.textContent = delivery.autoParked ? "Auto parked" : "Manual parking";
+    }
+
+    elements.jobFinishedPopup.classList.toggle("is-visible", isVisible);
+    elements.jobFinishedPopup.setAttribute("aria-hidden", isVisible ? "false" : "true");
 }
 
 function renderMetrics(data) {
@@ -2079,6 +2269,8 @@ function renderMap(data) {
     const truck = data.truck || {};
     const job = data.job || {};
     const gameplay = data.gameplay || {};
+    const hasWorldMapElements = Boolean(elements.ets2MapMarker && elements.ets2MapLabel && elements.mapMeta);
+    const hasHeroMapElements = Boolean(elements.heroMapStage && elements.heroMapTiles && elements.heroMapMarker);
     const x = getNumber(truck.placement?.x);
     const z = getNumber(truck.placement?.z);
     const heading = getNumber(truck.placement?.heading) ?? 0;
@@ -2117,7 +2309,7 @@ function renderMap(data) {
         elements.mapBadge.dataset.state = hasPosition ? "active" : "idle";
     }
 
-    if (!elements.ets2MapMarker || !elements.ets2MapLabel || !elements.mapMeta) {
+    if (!hasWorldMapElements && !hasHeroMapElements) {
         return;
     }
 
@@ -2137,21 +2329,23 @@ function renderMap(data) {
             elements.heroMapMarker.style.top = "50%";
             elements.heroMapMarker.style.setProperty("--hero-map-marker-heading", "0deg");
         }
-        elements.ets2MapMarker.style.left = "50%";
-        elements.ets2MapMarker.style.top = "50%";
-        elements.ets2MapMarker.style.setProperty("--map-marker-heading", "0deg");
-        elements.ets2MapLabel.textContent = "Awaiting truck position";
-        if (elements.ets2MapFallback) {
-            elements.ets2MapFallback.classList.add("is-visible");
+        if (hasWorldMapElements) {
+            elements.ets2MapMarker.style.left = "50%";
+            elements.ets2MapMarker.style.top = "50%";
+            elements.ets2MapMarker.style.setProperty("--map-marker-heading", "0deg");
+            elements.ets2MapLabel.textContent = "Awaiting truck position";
+            if (elements.ets2MapFallback) {
+                elements.ets2MapFallback.classList.add("is-visible");
+            }
+            if (elements.ets2MapTiles) {
+                elements.ets2MapTiles.innerHTML = "";
+            }
+            elements.mapMeta.innerHTML = [
+                createMetaPill("X", "--"),
+                createMetaPill("Z", "--"),
+                createMetaPill("Heading", "--"),
+            ].join("");
         }
-        if (elements.ets2MapTiles) {
-            elements.ets2MapTiles.innerHTML = "";
-        }
-        elements.mapMeta.innerHTML = [
-            createMetaPill("X", "--"),
-            createMetaPill("Z", "--"),
-            createMetaPill("Heading", "--"),
-        ].join("");
         return;
     }
 
@@ -2178,45 +2372,62 @@ function renderMap(data) {
         labelParts.push(`to ${localizeCityName(job.destinationCity)}`);
     }
 
-    if (tileMapState.initialized && tileMapState.config && elements.ets2MapStage) {
+    if (tileMapState.initialized && tileMapState.config) {
         const mapPixels = gameCoordsToTilePixels(x, z, tileMapState.config);
         if (mapPixels) {
             tileMapState.currentTruckPixel = mapPixels;
-            renderHeroTileMap(mapPixels.pixelX, mapPixels.pixelY, markerHeadingDeg);
-            const targetCenter = tileMapState.followTruck || !tileMapState.manualCenter
-                ? { centerX: mapPixels.pixelX, centerY: mapPixels.pixelY }
-                : tileMapState.manualCenter;
-            const tileView = renderTileMap(targetCenter.centerX, targetCenter.centerY);
-            if (tileView) {
-                tileMapState.lastView = tileView;
-                if (!tileMapState.followTruck) {
-                    tileMapState.manualCenter = { centerX: tileView.centerX, centerY: tileView.centerY };
-                }
-                const markerLeft = (mapPixels.pixelX - tileView.viewLeft) / tileView.resolution;
-                const markerTop = (mapPixels.pixelY - tileView.viewTop) / tileView.resolution;
+            if (hasHeroMapElements) {
+                renderHeroTileMap(mapPixels.pixelX, mapPixels.pixelY, markerHeadingDeg);
+            }
+            if (hasWorldMapElements && elements.ets2MapStage) {
+                const targetCenter = tileMapState.followTruck || !tileMapState.manualCenter
+                    ? { centerX: mapPixels.pixelX, centerY: mapPixels.pixelY }
+                    : tileMapState.manualCenter;
+                const tileView = renderTileMap(targetCenter.centerX, targetCenter.centerY);
+                if (tileView) {
+                    tileMapState.lastView = tileView;
+                    if (!tileMapState.followTruck) {
+                        tileMapState.manualCenter = { centerX: tileView.centerX, centerY: tileView.centerY };
+                    }
+                    const markerLeft = (mapPixels.pixelX - tileView.viewLeft) / tileView.resolution;
+                    const markerTop = (mapPixels.pixelY - tileView.viewTop) / tileView.resolution;
 
-                elements.ets2MapMarker.style.left = `${markerLeft}px`;
-                elements.ets2MapMarker.style.top = `${markerTop}px`;
-            } else {
-                elements.ets2MapMarker.style.left = `${xRatio * 100}%`;
-                elements.ets2MapMarker.style.top = `${zRatio * 100}%`;
+                    elements.ets2MapMarker.style.left = `${markerLeft}px`;
+                    elements.ets2MapMarker.style.top = `${markerTop}px`;
+                } else {
+                    elements.ets2MapMarker.style.left = `${xRatio * 100}%`;
+                    elements.ets2MapMarker.style.top = `${zRatio * 100}%`;
+                }
             }
         }
-    } else {
-        if (elements.ets2MapFallback) {
-            elements.ets2MapFallback.classList.add("is-visible");
-        }
-        elements.ets2MapMarker.style.left = `${xRatio * 100}%`;
-        elements.ets2MapMarker.style.top = `${zRatio * 100}%`;
     }
-    elements.ets2MapMarker.style.setProperty("--map-marker-heading", `${markerHeadingDeg}deg`);
-    elements.ets2MapLabel.textContent = labelParts.join(" ");
-    elements.mapMeta.innerHTML = [
-        createMetaPill("X", formatCoordinate(x)),
-        createMetaPill("Z", formatCoordinate(z)),
-        createMetaPill("Heading", formatAngleDegrees(heading)),
-        createMetaPill("Map", tileMapState.initialized ? `z${tileMapState.zoom}` : "Preview"),
-    ].join("");
+
+    if (hasWorldMapElements) {
+        if (!(tileMapState.initialized && tileMapState.config && elements.ets2MapStage)) {
+            if (elements.ets2MapFallback) {
+                elements.ets2MapFallback.classList.add("is-visible");
+            }
+            elements.ets2MapMarker.style.left = `${xRatio * 100}%`;
+            elements.ets2MapMarker.style.top = `${zRatio * 100}%`;
+        }
+        elements.ets2MapMarker.style.setProperty("--map-marker-heading", `${markerHeadingDeg}deg`);
+        elements.ets2MapLabel.textContent = labelParts.join(" ");
+        elements.mapMeta.innerHTML = [
+            createMetaPill("X", formatCoordinate(x)),
+            createMetaPill("Z", formatCoordinate(z)),
+            createMetaPill("Heading", formatAngleDegrees(heading)),
+            createMetaPill("Map", tileMapState.initialized ? `z${tileMapState.zoom}` : "Preview"),
+        ].join("");
+    }
+
+    if (!tileMapState.initialized && hasHeroMapElements) {
+        if (elements.heroMapFallback) {
+            elements.heroMapFallback.classList.add("is-visible");
+        }
+        elements.heroMapMarker.style.left = `${xRatio * 100}%`;
+        elements.heroMapMarker.style.top = `${zRatio * 100}%`;
+        elements.heroMapMarker.style.setProperty("--hero-map-marker-heading", `${markerHeadingDeg}deg`);
+    }
 }
 
 function renderEvents(data) {
@@ -2253,6 +2464,7 @@ function renderTelemetry(payload) {
     }
 
     renderHero(data);
+    renderJobFinishedPopup(data);
     renderMetrics(data);
     renderRoute(data);
     renderTruckProfile(data);
@@ -2263,7 +2475,7 @@ function renderTelemetry(payload) {
     renderLighting(data);
     renderTrailer(data);
     renderWorld(data);
-    renderMap(data);
+    scheduleMapRender(data);
     renderEvents(data);
     renderRawPayload(payload);
 
@@ -2454,6 +2666,14 @@ window.addEventListener("beforeunload", () => {
 
     if (telemetryTimeoutHandle !== null) {
         window.clearTimeout(telemetryTimeoutHandle);
+    }
+
+    if (mapRenderFrameHandle !== null) {
+        if (mapRenderUsesAnimationFrame && typeof window.cancelAnimationFrame === "function") {
+            window.cancelAnimationFrame(mapRenderFrameHandle);
+        } else {
+            window.clearTimeout(mapRenderFrameHandle);
+        }
     }
 
     telemetryAbortController?.abort();

@@ -286,8 +286,8 @@ $frontendConfig = [
     ],
     'mapTiles' => [
         'baseUrlCandidates' => settings_normalize_string_array(
-            dashboard_config_value('frontend.mapTiles.baseUrlCandidates', ['tiles', 'maps', 'http://127.0.0.1:8081']),
-            ['tiles', 'maps', 'http://127.0.0.1:8081']
+            dashboard_config_value('frontend.mapTiles.baseUrlCandidates', ['http://10.147.17.64/tiles/', 'tiles', 'maps', 'http://127.0.0.1:8081']),
+            ['http://10.147.17.64/tiles/', 'tiles', 'maps', 'http://127.0.0.1:8081']
         ),
         'configNames' => settings_normalize_string_array(
             dashboard_config_value('frontend.mapTiles.configNames', ['config.json', 'TileMapInfo.json']),
@@ -545,7 +545,7 @@ $lastSnapshotLabel = $lastSnapshotFile !== '' ? basename($lastSnapshotFile) : 'N
                 </span>
             </div>
             <div class="hero-side">
-                <a class="back" href="index.php">Back to dashboard</a>
+                <a class="back" href="indexV2.php">Back to dashboard</a>
                 <div class="stats">
                     <article class="stat">
                         <small>Snapshot Interval</small>
@@ -897,7 +897,7 @@ $lastSnapshotLabel = $lastSnapshotFile !== '' ? basename($lastSnapshotFile) : 'N
                             <div class="field full">
                                 <label for="frontend-map-tiles-base-urls">Tile base URL candidates</label>
                                 <textarea id="frontend-map-tiles-base-urls" name="frontend_map_tiles_base_urls" rows="5"><?php echo htmlspecialchars(implode(PHP_EOL, $formData['frontend']['mapTiles']['baseUrlCandidates']), ENT_QUOTES, 'UTF-8'); ?></textarea>
-                                <span class="hint">One URL or relative path per line. The dashboard tries these in order when loading tiles.</span>
+                                <span class="hint">One URL or relative path per line. The dashboard tries these in order when loading tiles. Update the first line here if your tile server changes.</span>
                             </div>
                             <div class="field">
                                 <label for="frontend-map-tiles-config-names">Tile config filenames</label>

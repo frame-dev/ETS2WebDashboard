@@ -17,4 +17,4 @@ if (
     return false;
 }
 
-require $docRoot . DIRECTORY_SEPARATOR . 'index.php';
+require $docRoot . DIRECTORY_SEPARATOR . 'indexV2.php';

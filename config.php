@@ -62,7 +62,7 @@ function dashboard_config_defaults(): array
                 'maxZ' => 57201.3,
             ],
             'mapTiles' => [
-                'baseUrlCandidates' => ['tiles', 'maps', 'http://127.0.0.1:8081'],
+                'baseUrlCandidates' => ['http://10.147.17.64/tiles/', 'tiles', 'maps', 'http://127.0.0.1:8081'],
                 'configNames' => ['config.json', 'TileMapInfo.json'],
                 'overzoomSteps' => 3,
             ],
