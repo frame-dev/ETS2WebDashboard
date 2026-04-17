@@ -170,6 +170,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                     <div class="hero-map-tiles" id="hero-map-tiles"></div>
                     <img class="hero-map-fallback" id="hero-map-fallback" src="map-ets2-preview.jpg" alt="Static ETS2 world map">
                     <div class="hero-map-marker" id="hero-map-marker">
+                        <span class="hero-map-marker-arrow" aria-hidden="true"></span>
                         <span class="hero-map-marker-core"></span>
                     </div>
                 </div>

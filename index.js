@@ -929,7 +929,9 @@ function getMarkerHeadingDegrees(headingRadians, x, z) {
         return normalizeDegrees((heading * 180) / Math.PI);
     }
 
-    const forwardSampleDistance = 32;
+    // Use a longer forward sample so the projected map angle stays stable
+    // even when the tile projection compresses world-space movement.
+    const forwardSampleDistance = 96;
     const originPoint = getMapProjectionPoint(originX, originZ);
     const forwardPoint = getMapProjectionPoint(
         originX + (Math.sin(heading) * forwardSampleDistance),
@@ -940,7 +942,7 @@ function getMarkerHeadingDegrees(headingRadians, x, z) {
         const deltaX = forwardPoint.pixelX - originPoint.pixelX;
         const deltaY = forwardPoint.pixelY - originPoint.pixelY;
         if (Math.abs(deltaX) > 0.0001 || Math.abs(deltaY) > 0.0001) {
-            return normalizeDegrees(((Math.atan2(deltaY, deltaX) * 180) / Math.PI) + 90);
+            return normalizeDegrees((Math.atan2(deltaX, -deltaY) * 180) / Math.PI);
         }
     }
 

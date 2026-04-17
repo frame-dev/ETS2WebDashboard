@@ -966,16 +966,23 @@ noscript p {
     box-shadow: 0 0 16px rgba(84, 239, 199, 0.28);
 }
 
-.hero-map-marker::after {
-    content: "";
+.hero-map-marker-arrow {
     position: absolute;
     top: 50%;
     left: 50%;
     width: 9px;
     height: 14px;
+    pointer-events: none;
+    transform: translate(-50%, -100%);
+}
+
+.hero-map-marker-arrow::before {
+    content: "";
+    position: absolute;
+    inset: 0;
     background: rgba(255, 191, 105, 0.95);
     clip-path: polygon(50% 0, 100% 100%, 50% 70%, 0 100%);
-    transform: translate(-50%, -100%) rotate(var(--hero-map-marker-heading));
+    transform: rotate(var(--hero-map-marker-heading));
     transform-origin: 50% 100%;
     filter: drop-shadow(0 0 6px rgba(255, 191, 105, 0.4));
 }
