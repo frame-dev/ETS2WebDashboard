@@ -66,6 +66,7 @@ $dashboard_config = [
     'speedRing' => is_array($frontend_config['speedRing'] ?? null) ? $frontend_config['speedRing'] : [],
     'storageKeys' => is_array($frontend_config['storageKeys'] ?? null) ? $frontend_config['storageKeys'] : [],
     'routePlanner' => is_array($frontend_config['routePlanner'] ?? null) ? $frontend_config['routePlanner'] : [],
+    'mapDefaults' => is_array($frontend_config['mapDefaults'] ?? null) ? $frontend_config['mapDefaults'] : [],
     'mapBounds' => is_array($frontend_config['mapBounds'] ?? null) ? $frontend_config['mapBounds'] : [],
     'mapTiles' => is_array($frontend_config['mapTiles'] ?? null) ? $frontend_config['mapTiles'] : [],
     'initialPayload' => $initial_payload,
@@ -123,6 +124,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                 <p class="eyebrow"><?php echo htmlspecialchars($hero_eyebrow, ENT_QUOTES, 'UTF-8'); ?></p>
                 <h1 id="hero-title"><?php echo htmlspecialchars($hero_title, ENT_QUOTES, 'UTF-8'); ?></h1>
                 <p class="hero-summary" id="hero-summary"><?php echo htmlspecialchars($hero_summary, ENT_QUOTES, 'UTF-8'); ?></p>
+                <div class="dashboard-notices" id="dashboard-notices" hidden aria-live="polite"></div>
             </div>
 
             <div class="hero-speed">

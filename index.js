@@ -10,12 +10,25 @@ const speedRingTrendSensitivityKph = Number(speedRingConfig.trendSensitivityKph)
 const telemetryBackoffStepMs = Number(telemetryPollingConfig.backoffStepMs) || 1000;
 const telemetryMaxBackoffMs = Number(telemetryPollingConfig.maxBackoffMs) || 30000;
 const telemetryHiddenIntervalMs = Number(telemetryPollingConfig.hiddenIntervalMs) || 12000;
+const telemetryMinimumIntervalMs = Math.max(100, Number(telemetryPollingConfig.minimumIntervalMs) || 250);
+const telemetryCacheMultiplier = Math.max(1, Number(telemetryPollingConfig.cacheMultiplier) || 2);
 const activeTabStorageKey = (config.storageKeys && config.storageKeys.activeTab) || "ets2-dashboard-active-tab";
 const mapPreferencesStorageKey = (config.storageKeys && config.storageKeys.mapPreferences) || "ets2-dashboard-map-preferences";
 const tileProxyEndpoint = config.tileProxyEndpoint || "tile-proxy.php";
 const tabsRoot = document.querySelector(".section-tabs");
 const routePlannerAverageKph = Number(config.routePlanner?.averageKph) || 63;
 const routePlannerRealTimeScale = Number(config.routePlanner?.realTimeScale) || 17.5;
+const mapDefaultsConfig = config.mapDefaults || {};
+const configuredWorldMapZoom = Number(mapDefaultsConfig.worldZoom);
+const defaultWorldMapZoom = Number.isFinite(configuredWorldMapZoom)
+    ? Math.max(0, Math.floor(configuredWorldMapZoom))
+    : 4;
+const defaultWorldMapFollowTruck = typeof mapDefaultsConfig.worldFollowTruck === "boolean" ? mapDefaultsConfig.worldFollowTruck : true;
+const configuredHeroMapZoom = Number(mapDefaultsConfig.heroZoom);
+const defaultHeroMapZoom = Number.isFinite(configuredHeroMapZoom)
+    ? Math.max(0, Math.floor(configuredHeroMapZoom))
+    : 3;
+const defaultHeroMapFollowTruck = typeof mapDefaultsConfig.heroFollowTruck === "boolean" ? mapDefaultsConfig.heroFollowTruck : true;
 const ets2MapBounds = {
     minX: Number(config.mapBounds?.minX) || -94118.3,
     maxX: Number(config.mapBounds?.maxX) || 128280,
@@ -23,6 +36,7 @@ const ets2MapBounds = {
     maxZ: Number(config.mapBounds?.maxZ) || 57201.3,
 };
 const tileMapConfig = config.mapTiles || {};
+const tileMapRetryDelayMs = Math.max(1000, Number(tileMapConfig.retryDelayMs) || 8000);
 const defaultTileBaseUrlCandidates = [
     "http://10.147.17.64/tiles/",
     "tiles",
@@ -41,8 +55,8 @@ const tileMapState = {
     nativeMaxZoom: 8,
     availableTileMaxZoom: 8,
     overzoomSteps: 2,
-    zoom: 4,
-    followTruck: true,
+    zoom: defaultWorldMapZoom,
+    followTruck: defaultWorldMapFollowTruck,
     manualCenter: null,
     currentTruckPixel: null,
     lastView: null,
@@ -57,11 +71,11 @@ const tileMapState = {
 };
 
 const heroMapState = {
-    zoom: 3,
+    zoom: defaultHeroMapZoom,
     minZoom: 0,
     maxZoom: 8,
-    defaultZoom: 3,
-    followTruck: true,
+    defaultZoom: defaultHeroMapZoom,
+    followTruck: defaultHeroMapFollowTruck,
     manualCenter: null,
     lastView: null,
     drag: {
@@ -77,6 +91,7 @@ const heroMapState = {
 const elements = {
     heroTitle: document.getElementById("hero-title"),
     heroSummary: document.getElementById("hero-summary"),
+    dashboardNotices: document.getElementById("dashboard-notices"),
     heroTags: document.getElementById("hero-tags"),
     heroSpeedValue: document.getElementById("hero-speed-value"),
     speedPeak: document.getElementById("speed-peak"),
@@ -191,6 +206,68 @@ let jobFinishedPopupVisibleUntil = 0;
 let previousJobFinishedSignature = "";
 let jobFinishedPopupHydrated = false;
 const jobFinishedPopupDurationMs = 5000;
+const dashboardIssues = {
+    telemetry: null,
+    map: null,
+};
+
+function formatRetryDelayLabel(delayMs) {
+    const normalized = Math.max(0, Number(delayMs) || 0);
+    if (normalized >= 1000) {
+        const seconds = normalized / 1000;
+        return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`;
+    }
+
+    return `${Math.round(normalized)} ms`;
+}
+
+function renderDashboardIssues() {
+    if (!elements.dashboardNotices) {
+        return;
+    }
+
+    const issues = Object.values(dashboardIssues).filter((issue) => issue && typeof issue === "object");
+    if (issues.length === 0) {
+        elements.dashboardNotices.hidden = true;
+        elements.dashboardNotices.innerHTML = "";
+        return;
+    }
+
+    elements.dashboardNotices.hidden = false;
+    elements.dashboardNotices.innerHTML = issues.map((issue) => {
+        const severity = issue.severity === "error" ? "error" : "warning";
+        return `
+            <div class="dashboard-notice-card" data-severity="${severity}">
+                <strong class="dashboard-notice-title">${escapeHtml(issue.title || "Notice")}</strong>
+                <span class="dashboard-notice-message">${escapeHtml(issue.message || "")}</span>
+            </div>
+        `;
+    }).join("");
+}
+
+function setDashboardIssue(key, issue) {
+    if (!Object.prototype.hasOwnProperty.call(dashboardIssues, key)) {
+        return;
+    }
+
+    dashboardIssues[key] = issue && typeof issue === "object"
+        ? {
+            severity: issue.severity === "error" ? "error" : "warning",
+            title: String(issue.title || "Notice"),
+            message: String(issue.message || ""),
+        }
+        : null;
+    renderDashboardIssues();
+}
+
+function clearDashboardIssue(key) {
+    if (!Object.prototype.hasOwnProperty.call(dashboardIssues, key)) {
+        return;
+    }
+
+    dashboardIssues[key] = null;
+    renderDashboardIssues();
+}
 
 function buildLocaleCandidates(locale) {
     const raw = String(locale || "").trim().toLowerCase().replaceAll("-", "_");
@@ -330,6 +407,7 @@ function loadCityLocalizations() {
 
                 cityLocalizationState.cityByKey = lookup;
                 cityLocalizationState.loaded = true;
+                clearDashboardIssue("map");
 
                 rerenderMapsFromLatestData(true);
                 return;
@@ -352,7 +430,38 @@ function clampTelemetryDelay(value) {
         return refreshIntervalMs;
     }
 
-    return Math.max(250, Math.min(parsed, telemetryMaxBackoffMs));
+    return Math.max(telemetryMinimumIntervalMs, Math.min(parsed, telemetryMaxBackoffMs));
+}
+
+async function buildResponseErrorMessage(response, fallbackLabel) {
+    const proxyHeader = response.headers.get("x-ets2-tile-proxy-error");
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    let detail = proxyHeader ? proxyHeader.trim() : "";
+
+    try {
+        if (contentType.includes("application/json")) {
+            const payload = await response.json();
+            if (payload && typeof payload === "object") {
+                const payloadMessage = payload.error?.message
+                    || payload.message
+                    || payload.error;
+                if (typeof payloadMessage === "string" && payloadMessage.trim() !== "") {
+                    detail = payloadMessage.trim();
+                }
+            }
+        } else {
+            const text = (await response.text()).trim();
+            if (text !== "") {
+                detail = text;
+            }
+        }
+    } catch (error) {
+        // Ignore response parse failures and fall back to status + headers.
+    }
+
+    return detail !== ""
+        ? `${fallbackLabel} failed with status ${response.status}: ${detail}`
+        : `${fallbackLabel} failed with status ${response.status}`;
 }
 
 function getNextTelemetryDelayMs() {
@@ -366,7 +475,7 @@ function getNextTelemetryDelayMs() {
     }
 
     if (telemetryLastSourceType === "cache") {
-        delay = Math.max(delay, Math.min(telemetryMaxBackoffMs, refreshIntervalMs * 2));
+        delay = Math.max(delay, Math.min(telemetryMaxBackoffMs, refreshIntervalMs * telemetryCacheMultiplier));
     }
 
     if (typeof document !== "undefined" && document.visibilityState === "hidden") {
@@ -391,18 +500,27 @@ function scheduleTelemetryUpdate(delayMs = refreshIntervalMs) {
 function applyTelemetrySourceStatus(payload) {
     const source = payload?.source || null;
     const sourceType = source && typeof source.type === "string" ? source.type : "upstream";
+    const sourceError = typeof source?.error === "string" ? source.error.trim() : "";
 
     telemetryLastSourceType = sourceType;
 
     if (sourceType === "upstream") {
         telemetryConsecutiveFailures = 0;
         setConnectionState("Connected", "connected");
+        clearDashboardIssue("telemetry");
         return;
     }
 
     if (sourceType === "cache") {
         telemetryConsecutiveFailures = 0;
         setConnectionState("Cached", "cached");
+        setDashboardIssue("telemetry", {
+            severity: "warning",
+            title: "Using cached telemetry",
+            message: sourceError !== ""
+                ? `${sourceError} The dashboard is showing the latest cached snapshot until live telemetry responds again.`
+                : "Live telemetry is temporarily unavailable, so the dashboard is showing the latest cached snapshot.",
+        });
         if (elements.heroSummary) {
             const current = elements.heroSummary.textContent || "";
             if (!current.includes("cached snapshot")) {
@@ -413,6 +531,13 @@ function applyTelemetrySourceStatus(payload) {
     }
 
     setConnectionState("Disconnected", "error");
+    setDashboardIssue("telemetry", {
+        severity: "error",
+        title: "Telemetry unavailable",
+        message: sourceError !== ""
+            ? sourceError
+            : "The dashboard could not read live telemetry or a cached fallback snapshot.",
+    });
 }
 
 function setActiveMapTarget(target) {
@@ -1223,10 +1348,14 @@ async function tryFetchJson(url) {
     });
 
     if (!response.ok) {
-        throw new Error(`Map config request failed with status ${response.status}`);
+        throw new Error(await buildResponseErrorMessage(response, "Map config request"));
     }
 
-    return response.json();
+    try {
+        return await response.json();
+    } catch (error) {
+        throw new Error("Map config response was not valid JSON.");
+    }
 }
 
 function normalizeTileMapDefinition(rawConfig, baseUrl, configName) {
@@ -1310,6 +1439,7 @@ async function initializeTileMap() {
     const configNames = Array.isArray(tileMapConfig.configNames) && tileMapConfig.configNames.length > 0
         ? tileMapConfig.configNames
         : ["config.json", "TileMapInfo.json"];
+    let lastInitializationError = "";
 
     for (const baseUrl of baseUrlCandidates) {
         for (const configName of configNames) {
@@ -1333,33 +1463,41 @@ async function initializeTileMap() {
                 tileMapState.availableTileMaxZoom = await detectAvailableMaxZoom(normalized);
                 tileMapState.overzoomSteps = Math.max(0, Math.floor(getNumber(tileMapConfig.overzoomSteps) ?? 2));
                 tileMapState.maxZoom = tileMapState.availableTileMaxZoom + tileMapState.overzoomSteps;
-                const worldDefaultZoom = Math.floor((normalized.minZoom + tileMapState.availableTileMaxZoom) / 2);
+                const worldDefaultZoom = defaultWorldMapZoom;
                 tileMapState.zoom = Math.max(normalized.minZoom, Math.min(tileMapState.maxZoom, hasLoadedMapPreferences ? tileMapState.zoom : worldDefaultZoom));
                 if (tileMapState.zoom > tileMapState.maxZoom) {
                     tileMapState.zoom = tileMapState.maxZoom;
                 }
                 heroMapState.minZoom = tileMapState.minZoom;
                 heroMapState.maxZoom = tileMapState.maxZoom;
-                heroMapState.defaultZoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, tileMapState.availableTileMaxZoom - 1));
+                heroMapState.defaultZoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, defaultHeroMapZoom));
                 heroMapState.zoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, hasLoadedMapPreferences ? heroMapState.zoom : heroMapState.defaultZoom));
                 setHeroMapFollowTruck(heroMapState.followTruck);
                 tileMapState.sourceLabel = normalized.sourceLabel;
 
                 updateMapModeLabel();
                 persistMapPreferences();
+                clearDashboardIssue("map");
                 rerenderMapsFromLatestData();
                 return;
             } catch (error) {
-                // Keep trying the next candidate.
+                lastInitializationError = error instanceof Error && error.message
+                    ? error.message
+                    : "The configured tile source could not be reached.";
             }
         }
     }
 
     updateMapModeLabel();
+    setDashboardIssue("map", {
+        severity: "warning",
+        title: "Map tiles unavailable",
+        message: `${lastInitializationError || "The dashboard could not load any configured tile source."} Retrying in ${formatRetryDelayLabel(tileMapRetryDelayMs)} while the static preview stays available.`,
+    });
     tileMapRetryTimer = window.setTimeout(() => {
         tileMapRetryTimer = null;
         initializeTileMap();
-    }, 8000);
+    }, tileMapRetryDelayMs);
 }
 
 function updateMapModeLabel() {
@@ -2531,17 +2669,31 @@ async function updateTelemetry() {
         });
 
         if (!response.ok) {
-            throw new Error(`Telemetry request failed with status ${response.status}`);
+            throw new Error(await buildResponseErrorMessage(response, "Telemetry request"));
         }
 
-        const payload = await response.json();
+        let payload;
+        try {
+            payload = await response.json();
+        } catch (error) {
+            throw new Error("Telemetry response was not valid JSON.");
+        }
         renderTelemetry(payload);
         scheduleTelemetryUpdate(getNextTelemetryDelayMs());
     } catch (error) {
         const isAbort = error && typeof error === "object" && error.name === "AbortError";
+        const errorMessage = error instanceof Error && error.message
+            ? error.message
+            : "Unknown telemetry error";
         telemetryConsecutiveFailures += 1;
         telemetryLastSourceType = "none";
+        const nextDelayMs = getNextTelemetryDelayMs();
         setConnectionState("Connection failed", "error");
+        setDashboardIssue("telemetry", {
+            severity: "error",
+            title: isAbort ? "Telemetry request timed out" : "Telemetry fetch failed",
+            message: `${isAbort ? "The dashboard stopped waiting for the telemetry endpoint before it answered." : errorMessage} Retrying in ${formatRetryDelayLabel(nextDelayMs)}.`,
+        });
 
         if (elements.lastUpdated) {
             elements.lastUpdated.textContent = "Update failed";
@@ -2554,10 +2706,10 @@ async function updateTelemetry() {
         }
 
         if (elements.telemetryOutput) {
-            elements.telemetryOutput.textContent = error?.message || "Unknown telemetry error";
+            elements.telemetryOutput.textContent = errorMessage;
         }
 
-        scheduleTelemetryUpdate(getNextTelemetryDelayMs());
+        scheduleTelemetryUpdate(nextDelayMs);
     } finally {
         telemetryRequestInFlight = false;
         telemetryAbortController = null;

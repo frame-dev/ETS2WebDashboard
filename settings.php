@@ -50,6 +50,30 @@ function settings_read_json_file(string $path): array
     return is_array($decoded) ? $decoded : [];
 }
 
+function settings_upload_error_message(int $errorCode): ?string
+{
+    return match ($errorCode) {
+        UPLOAD_ERR_OK, UPLOAD_ERR_NO_FILE => null,
+        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The uploaded config file was too large to import.',
+        UPLOAD_ERR_PARTIAL => 'The uploaded config file was only partially received. Try uploading it again.',
+        UPLOAD_ERR_NO_TMP_DIR => 'The server is missing a temporary upload directory, so the config file could not be read.',
+        UPLOAD_ERR_CANT_WRITE => 'The server could not write the uploaded config file to temporary storage.',
+        UPLOAD_ERR_EXTENSION => 'A PHP extension stopped the config file upload before it completed.',
+        default => 'The config file upload failed before import could begin.',
+    };
+}
+
+function settings_import_has_managed_sections(array $importedConfig): bool
+{
+    foreach (['app', 'design', 'telemetry', 'snapshots', 'frontend'] as $key) {
+        if (array_key_exists($key, $importedConfig)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function settings_checkbox_post(string $name): bool
 {
     return ($_POST[$name] ?? '') === '1';
@@ -137,6 +161,38 @@ function settings_build_theme_style(array $design): string
     return implode('; ', $declarations) . ';';
 }
 
+function settings_build_snapshot_filename_preview(array $snapshotConfig): string
+{
+    $timestampMs = 1760044425432;
+    $date = \DateTimeImmutable::createFromFormat('U.u', sprintf('%.6F', $timestampMs / 1000), new \DateTimeZone('UTC'));
+    $prefix = trim((string) ($snapshotConfig['filenamePrefix'] ?? 'telemetry-'));
+    $pattern = trim((string) ($snapshotConfig['filenamePattern'] ?? '{prefix}{date}-{ms}Z.{ext}'));
+    $timestampFormat = trim((string) ($snapshotConfig['timestampFormat'] ?? 'Y-m-d\TH-i-s'));
+
+    if (!$date instanceof \DateTimeImmutable) {
+        return 'telemetry-2025-10-09T08-20-25-432Z.json';
+    }
+
+    if ($pattern === '') {
+        $pattern = '{prefix}{date}-{ms}Z.{ext}';
+    }
+
+    if ($timestampFormat === '') {
+        $timestampFormat = 'Y-m-d\TH-i-s';
+    }
+
+    $rendered = strtr($pattern, [
+        '{prefix}' => $prefix,
+        '{date}' => $date->format($timestampFormat),
+        '{ms}' => str_pad((string) ($timestampMs % 1000), 3, '0', STR_PAD_LEFT),
+        '{ext}' => 'json',
+    ]);
+    $sanitized = preg_replace('/[<>:"\/\\\\|?*\x00-\x1F]+/', '-', $rendered);
+    $sanitized = is_string($sanitized) ? trim($sanitized, ". \t\n\r\0\x0B") : '';
+
+    return $sanitized !== '' ? $sanitized : 'telemetry-2025-10-09T08-20-25-432Z.json';
+}
+
 function settings_build_managed_config(array $formData): array
 {
     return [
@@ -150,6 +206,7 @@ function settings_build_managed_config(array $formData): array
             'telemetryPolling' => $formData['telemetryPolling'],
             'telemetryEndpoint' => $formData['frontend']['telemetryEndpoint'],
             'storageKeys' => $formData['frontend']['storageKeys'],
+            'mapDefaults' => $formData['mapDefaults'],
             'mapBounds' => $formData['mapBounds'],
             'mapTiles' => $formData['frontend']['mapTiles'],
         ],
@@ -167,6 +224,7 @@ function settings_apply_managed_config(array $localConfig, array $managedConfig)
     $localConfig['frontend']['telemetryPolling'] = $managedConfig['frontend']['telemetryPolling'];
     $localConfig['frontend']['telemetryEndpoint'] = $managedConfig['frontend']['telemetryEndpoint'];
     $localConfig['frontend']['storageKeys'] = $managedConfig['frontend']['storageKeys'];
+    $localConfig['frontend']['mapDefaults'] = $managedConfig['frontend']['mapDefaults'];
     $localConfig['frontend']['mapBounds'] = $managedConfig['frontend']['mapBounds'];
     $localConfig['frontend']['mapTiles'] = $managedConfig['frontend']['mapTiles'];
 
@@ -202,6 +260,9 @@ function settings_import_json_to_form_data(array $currentFormData, array $import
     $currentFormData['snapshots']['directory'] = trim((string) ($importedConfig['snapshots']['directory'] ?? $currentFormData['snapshots']['directory']));
     $currentFormData['snapshots']['stateFile'] = trim((string) ($importedConfig['snapshots']['stateFile'] ?? $currentFormData['snapshots']['stateFile']));
     $currentFormData['snapshots']['prettyPrint'] = (bool) ($importedConfig['snapshots']['prettyPrint'] ?? $currentFormData['snapshots']['prettyPrint']);
+    $currentFormData['snapshots']['filenamePrefix'] = trim((string) ($importedConfig['snapshots']['filenamePrefix'] ?? $currentFormData['snapshots']['filenamePrefix']));
+    $currentFormData['snapshots']['filenamePattern'] = trim((string) ($importedConfig['snapshots']['filenamePattern'] ?? $currentFormData['snapshots']['filenamePattern']));
+    $currentFormData['snapshots']['timestampFormat'] = trim((string) ($importedConfig['snapshots']['timestampFormat'] ?? $currentFormData['snapshots']['timestampFormat']));
 
     $currentFormData['routePlanner']['averageKph'] = max(1, settings_int_value($frontend['routePlanner']['averageKph'] ?? null, $currentFormData['routePlanner']['averageKph']));
     $currentFormData['routePlanner']['realTimeScale'] = max(0.1, settings_float_value($frontend['routePlanner']['realTimeScale'] ?? null, $currentFormData['routePlanner']['realTimeScale']));
@@ -211,10 +272,16 @@ function settings_import_json_to_form_data(array $currentFormData, array $import
     $currentFormData['telemetryPolling']['backoffStepMs'] = max(0, settings_int_value($frontend['telemetryPolling']['backoffStepMs'] ?? null, $currentFormData['telemetryPolling']['backoffStepMs']));
     $currentFormData['telemetryPolling']['maxBackoffMs'] = max(0, settings_int_value($frontend['telemetryPolling']['maxBackoffMs'] ?? null, $currentFormData['telemetryPolling']['maxBackoffMs']));
     $currentFormData['telemetryPolling']['hiddenIntervalMs'] = max(0, settings_int_value($frontend['telemetryPolling']['hiddenIntervalMs'] ?? null, $currentFormData['telemetryPolling']['hiddenIntervalMs']));
+    $currentFormData['telemetryPolling']['minimumIntervalMs'] = max(100, settings_int_value($frontend['telemetryPolling']['minimumIntervalMs'] ?? null, $currentFormData['telemetryPolling']['minimumIntervalMs']));
+    $currentFormData['telemetryPolling']['cacheMultiplier'] = max(1, settings_int_value($frontend['telemetryPolling']['cacheMultiplier'] ?? null, $currentFormData['telemetryPolling']['cacheMultiplier']));
 
     $currentFormData['frontend']['telemetryEndpoint'] = trim((string) (($frontend['telemetryEndpoint'] ?? null) ?? $currentFormData['frontend']['telemetryEndpoint']));
     $currentFormData['frontend']['storageKeys']['activeTab'] = trim((string) (($frontend['storageKeys']['activeTab'] ?? null) ?? $currentFormData['frontend']['storageKeys']['activeTab']));
     $currentFormData['frontend']['storageKeys']['mapPreferences'] = trim((string) (($frontend['storageKeys']['mapPreferences'] ?? null) ?? $currentFormData['frontend']['storageKeys']['mapPreferences']));
+    $currentFormData['mapDefaults']['worldZoom'] = max(0, settings_int_value($frontend['mapDefaults']['worldZoom'] ?? null, $currentFormData['mapDefaults']['worldZoom']));
+    $currentFormData['mapDefaults']['heroZoom'] = max(0, settings_int_value($frontend['mapDefaults']['heroZoom'] ?? null, $currentFormData['mapDefaults']['heroZoom']));
+    $currentFormData['mapDefaults']['worldFollowTruck'] = (bool) ($frontend['mapDefaults']['worldFollowTruck'] ?? $currentFormData['mapDefaults']['worldFollowTruck']);
+    $currentFormData['mapDefaults']['heroFollowTruck'] = (bool) ($frontend['mapDefaults']['heroFollowTruck'] ?? $currentFormData['mapDefaults']['heroFollowTruck']);
     $currentFormData['mapBounds']['minX'] = settings_float_value($frontend['mapBounds']['minX'] ?? null, $currentFormData['mapBounds']['minX']);
     $currentFormData['mapBounds']['maxX'] = settings_float_value($frontend['mapBounds']['maxX'] ?? null, $currentFormData['mapBounds']['maxX']);
     $currentFormData['mapBounds']['minZ'] = settings_float_value($frontend['mapBounds']['minZ'] ?? null, $currentFormData['mapBounds']['minZ']);
@@ -222,6 +289,7 @@ function settings_import_json_to_form_data(array $currentFormData, array $import
     $currentFormData['frontend']['mapTiles']['baseUrlCandidates'] = settings_normalize_string_array($frontend['mapTiles']['baseUrlCandidates'] ?? null, $currentFormData['frontend']['mapTiles']['baseUrlCandidates']);
     $currentFormData['frontend']['mapTiles']['configNames'] = settings_normalize_string_array($frontend['mapTiles']['configNames'] ?? null, $currentFormData['frontend']['mapTiles']['configNames']);
     $currentFormData['frontend']['mapTiles']['overzoomSteps'] = max(0, settings_int_value($frontend['mapTiles']['overzoomSteps'] ?? null, $currentFormData['frontend']['mapTiles']['overzoomSteps']));
+    $currentFormData['frontend']['mapTiles']['retryDelayMs'] = max(1000, settings_int_value($frontend['mapTiles']['retryDelayMs'] ?? null, $currentFormData['frontend']['mapTiles']['retryDelayMs']));
 
     return $currentFormData;
 }
@@ -257,6 +325,9 @@ $snapshotConfig = [
     'directory' => (string) dashboard_config_value('snapshots.directory', __DIR__ . '/snapshots'),
     'stateFile' => (string) dashboard_config_value('snapshots.stateFile', __DIR__ . '/tmp/snapshot-state.json'),
     'prettyPrint' => (bool) dashboard_config_value('snapshots.prettyPrint', true),
+    'filenamePrefix' => (string) dashboard_config_value('snapshots.filenamePrefix', 'telemetry-'),
+    'filenamePattern' => (string) dashboard_config_value('snapshots.filenamePattern', '{prefix}{date}-{ms}Z.{ext}'),
+    'timestampFormat' => (string) dashboard_config_value('snapshots.timestampFormat', 'Y-m-d\TH-i-s'),
 ];
 $routePlannerConfig = [
     'averageKph' => (int) dashboard_config_value('frontend.routePlanner.averageKph', 63),
@@ -271,6 +342,14 @@ $telemetryPollingConfig = [
     'backoffStepMs' => (int) dashboard_config_value('frontend.telemetryPolling.backoffStepMs', 1000),
     'maxBackoffMs' => (int) dashboard_config_value('frontend.telemetryPolling.maxBackoffMs', 30000),
     'hiddenIntervalMs' => (int) dashboard_config_value('frontend.telemetryPolling.hiddenIntervalMs', 12000),
+    'minimumIntervalMs' => (int) dashboard_config_value('frontend.telemetryPolling.minimumIntervalMs', 250),
+    'cacheMultiplier' => (int) dashboard_config_value('frontend.telemetryPolling.cacheMultiplier', 2),
+];
+$mapDefaultsConfig = [
+    'worldZoom' => (int) dashboard_config_value('frontend.mapDefaults.worldZoom', 4),
+    'worldFollowTruck' => (bool) dashboard_config_value('frontend.mapDefaults.worldFollowTruck', true),
+    'heroZoom' => (int) dashboard_config_value('frontend.mapDefaults.heroZoom', 3),
+    'heroFollowTruck' => (bool) dashboard_config_value('frontend.mapDefaults.heroFollowTruck', true),
 ];
 $mapBoundsConfig = [
     'minX' => (float) dashboard_config_value('frontend.mapBounds.minX', -94118.3),
@@ -294,6 +373,7 @@ $frontendConfig = [
             ['config.json', 'TileMapInfo.json']
         ),
         'overzoomSteps' => (int) dashboard_config_value('frontend.mapTiles.overzoomSteps', 3),
+        'retryDelayMs' => (int) dashboard_config_value('frontend.mapTiles.retryDelayMs', 8000),
     ],
 ];
 $formData = [
@@ -304,12 +384,15 @@ $formData = [
     'routePlanner' => $routePlannerConfig,
     'speedRing' => $speedRingConfig,
     'telemetryPolling' => $telemetryPollingConfig,
+    'mapDefaults' => $mapDefaultsConfig,
     'mapBounds' => $mapBoundsConfig,
     'frontend' => $frontendConfig,
 ];
 $flash = null;
 $flashType = null;
 $errors = [];
+$importJsonInput = '';
+$importFeedback = null;
 $managedConfig = settings_build_managed_config($formData);
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && isset($_GET['export'])) {
@@ -335,26 +418,32 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
     if ($settingsAction === 'import') {
         $importJson = trim((string) ($_POST['import_config_json'] ?? ''));
+        $importJsonInput = $importJson;
 
-        if (
-            $importJson === ''
-            && isset($_FILES['import_config_file'])
-            && is_array($_FILES['import_config_file'])
-            && (int) ($_FILES['import_config_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK
-            && is_string($_FILES['import_config_file']['tmp_name'] ?? null)
-        ) {
-            $uploadContents = @file_get_contents($_FILES['import_config_file']['tmp_name']);
-            if (is_string($uploadContents)) {
-                $importJson = trim($uploadContents);
+        if ($importJson === '' && isset($_FILES['import_config_file']) && is_array($_FILES['import_config_file'])) {
+            $uploadErrorCode = (int) ($_FILES['import_config_file']['error'] ?? UPLOAD_ERR_NO_FILE);
+            $uploadErrorMessage = settings_upload_error_message($uploadErrorCode);
+            if ($uploadErrorMessage !== null) {
+                $errors[] = $uploadErrorMessage;
+            } elseif ($uploadErrorCode === UPLOAD_ERR_OK && is_string($_FILES['import_config_file']['tmp_name'] ?? null)) {
+                $uploadContents = @file_get_contents($_FILES['import_config_file']['tmp_name']);
+                if (is_string($uploadContents)) {
+                    $importJson = trim($uploadContents);
+                    $importJsonInput = $importJson;
+                } else {
+                    $errors[] = 'The uploaded config file could not be read from temporary storage.';
+                }
             }
         }
 
-        if ($importJson === '') {
+        if ($errors === [] && $importJson === '') {
             $errors[] = 'Provide a JSON config file or paste JSON before importing.';
-        } else {
+        } elseif ($errors === []) {
             $decodedImport = json_decode($importJson, true);
             if (!is_array($decodedImport)) {
-                $errors[] = 'Imported config must be valid JSON.';
+                $errors[] = 'Imported config must be valid JSON: ' . json_last_error_msg() . '.';
+            } elseif (!settings_import_has_managed_sections($decodedImport)) {
+                $errors[] = 'Imported config does not contain any managed dashboard settings sections such as app, telemetry, snapshots, or frontend.';
             } else {
                 $formData = settings_import_json_to_form_data($formData, $decodedImport);
                 $managedConfig = settings_build_managed_config($formData);
@@ -408,6 +497,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'directory' => trim((string) ($_POST['snapshot_directory'] ?? $snapshotConfig['directory'])),
                 'stateFile' => trim((string) ($_POST['snapshot_state_file'] ?? $snapshotConfig['stateFile'])),
                 'prettyPrint' => settings_checkbox_post('snapshot_pretty_print'),
+                'filenamePrefix' => trim((string) ($_POST['snapshot_filename_prefix'] ?? $snapshotConfig['filenamePrefix'])),
+                'filenamePattern' => trim((string) ($_POST['snapshot_filename_pattern'] ?? $snapshotConfig['filenamePattern'])),
+                'timestampFormat' => trim((string) ($_POST['snapshot_timestamp_format'] ?? $snapshotConfig['timestampFormat'])),
             ],
             'routePlanner' => [
                 'averageKph' => max(1, settings_int_value($_POST['route_planner_average_kph'] ?? null, $routePlannerConfig['averageKph'])),
@@ -422,6 +514,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'backoffStepMs' => max(0, settings_int_value($_POST['telemetry_polling_backoff_step_ms'] ?? null, $telemetryPollingConfig['backoffStepMs'])),
                 'maxBackoffMs' => max(0, settings_int_value($_POST['telemetry_polling_max_backoff_ms'] ?? null, $telemetryPollingConfig['maxBackoffMs'])),
                 'hiddenIntervalMs' => max(0, settings_int_value($_POST['telemetry_polling_hidden_interval_ms'] ?? null, $telemetryPollingConfig['hiddenIntervalMs'])),
+                'minimumIntervalMs' => max(100, settings_int_value($_POST['telemetry_polling_minimum_interval_ms'] ?? null, $telemetryPollingConfig['minimumIntervalMs'])),
+                'cacheMultiplier' => max(1, settings_int_value($_POST['telemetry_polling_cache_multiplier'] ?? null, $telemetryPollingConfig['cacheMultiplier'])),
+            ],
+            'mapDefaults' => [
+                'worldZoom' => max(0, settings_int_value($_POST['frontend_map_default_world_zoom'] ?? null, $mapDefaultsConfig['worldZoom'])),
+                'worldFollowTruck' => settings_checkbox_post('frontend_map_default_world_follow_truck'),
+                'heroZoom' => max(0, settings_int_value($_POST['frontend_map_default_hero_zoom'] ?? null, $mapDefaultsConfig['heroZoom'])),
+                'heroFollowTruck' => settings_checkbox_post('frontend_map_default_hero_follow_truck'),
             ],
             'mapBounds' => [
                 'minX' => settings_float_value($_POST['frontend_map_bounds_min_x'] ?? null, $mapBoundsConfig['minX']),
@@ -439,6 +539,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'baseUrlCandidates' => settings_normalize_string_array((string) ($_POST['frontend_map_tiles_base_urls'] ?? ''), $frontendConfig['mapTiles']['baseUrlCandidates']),
                     'configNames' => settings_normalize_string_array((string) ($_POST['frontend_map_tiles_config_names'] ?? ''), $frontendConfig['mapTiles']['configNames']),
                     'overzoomSteps' => max(0, settings_int_value($_POST['frontend_map_tiles_overzoom_steps'] ?? null, $frontendConfig['mapTiles']['overzoomSteps'])),
+                    'retryDelayMs' => max(1000, settings_int_value($_POST['frontend_map_tiles_retry_delay_ms'] ?? null, $frontendConfig['mapTiles']['retryDelayMs'])),
                 ],
             ],
         ];
@@ -465,6 +566,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         if ($formData['snapshots']['stateFile'] === '') {
             $errors[] = 'Snapshot state file cannot be empty.';
+        }
+
+        if ($formData['snapshots']['filenamePattern'] === '') {
+            $errors[] = 'Snapshot filename pattern cannot be empty.';
+        }
+
+        if ($formData['snapshots']['timestampFormat'] === '') {
+            $errors[] = 'Snapshot timestamp format cannot be empty.';
         }
 
         if ($formData['mapBounds']['minX'] >= $formData['mapBounds']['maxX']) {
@@ -507,6 +616,9 @@ if (isset($_GET['imported']) && $_GET['imported'] === '1') {
 if ($errors !== []) {
     $flash = implode(' ', $errors);
     $flashType = 'error';
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && (string) ($_POST['settings_action'] ?? 'save') === 'import') {
+        $importFeedback = $flash;
+    }
 }
 
 $snapshotState = settings_read_json_file($formData['snapshots']['stateFile']);
@@ -524,6 +636,7 @@ $configPreview = settings_export_local_config($managedConfig);
 $documentTitle = (string) ($formData['app']['pageTitle'] !== '' ? $formData['app']['pageTitle'] : $appTitle);
 $themeStyle = settings_build_theme_style($formData['design']);
 $lastSnapshotLabel = $lastSnapshotFile !== '' ? basename($lastSnapshotFile) : 'No snapshots written yet';
+$snapshotFilenamePreview = settings_build_snapshot_filename_preview($formData['snapshots']);
 $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time());
 ?>
 <!DOCTYPE html>
@@ -806,6 +919,16 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                 <input id="telemetry-polling-max-backoff-ms" name="telemetry_polling_max_backoff_ms" type="number" min="0" step="100" value="<?php echo htmlspecialchars((string) $formData['telemetryPolling']['maxBackoffMs'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">Upper limit for automatic retry delay during connection issues.</span>
                             </div>
+                            <div class="field">
+                                <label for="telemetry-polling-minimum-interval-ms">Polling minimum interval</label>
+                                <input id="telemetry-polling-minimum-interval-ms" name="telemetry_polling_minimum_interval_ms" type="number" min="100" step="50" value="<?php echo htmlspecialchars((string) $formData['telemetryPolling']['minimumIntervalMs'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Lowest allowed browser polling delay after refresh and backoff rules are applied.</span>
+                            </div>
+                            <div class="field">
+                                <label for="telemetry-polling-cache-multiplier">Cache retry multiplier</label>
+                                <input id="telemetry-polling-cache-multiplier" name="telemetry_polling_cache_multiplier" type="number" min="1" step="1" value="<?php echo htmlspecialchars((string) $formData['telemetryPolling']['cacheMultiplier'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Extra slowdown applied when the frontend is reading cached telemetry instead of live upstream data.</span>
+                            </div>
                             <div class="field full">
                                 <label for="telemetry-polling-hidden-interval-ms">Polling while tab is hidden</label>
                                 <input id="telemetry-polling-hidden-interval-ms" name="telemetry_polling_hidden_interval_ms" type="number" min="0" step="100" value="<?php echo htmlspecialchars((string) $formData['telemetryPolling']['hiddenIntervalMs'], ENT_QUOTES, 'UTF-8'); ?>">
@@ -854,6 +977,47 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
 
             <section class="settings-tab-panel" id="settings-panel-maps" role="tabpanel" aria-labelledby="settings-tab-maps" data-settings-panel="maps" hidden>
                 <div class="layout tab-layout">
+                    <section class="panel">
+                        <div class="head">
+                            <div>
+                                <p class="eyebrow">Defaults</p>
+                                <h2>Map Behavior</h2>
+                            </div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label for="frontend-map-default-world-zoom">World map default zoom</label>
+                                <input id="frontend-map-default-world-zoom" name="frontend_map_default_world_zoom" type="number" min="0" step="1" value="<?php echo htmlspecialchars((string) $formData['mapDefaults']['worldZoom'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Starting zoom for the larger route map when no saved browser preference exists yet.</span>
+                            </div>
+                            <div class="field">
+                                <label for="frontend-map-default-hero-zoom">Hero map default zoom</label>
+                                <input id="frontend-map-default-hero-zoom" name="frontend_map_default_hero_zoom" type="number" min="0" step="1" value="<?php echo htmlspecialchars((string) $formData['mapDefaults']['heroZoom'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Starting zoom for the compact live map card before local storage takes over.</span>
+                            </div>
+                            <div class="toggle-card">
+                                <div class="toggle-copy">
+                                    <span class="toggle-title">World map follows truck by default</span>
+                                    <span>Keeps the larger map centered on the truck until a viewer manually pans away.</span>
+                                </div>
+                                <label class="switch" aria-label="World map follows truck by default">
+                                    <input type="checkbox" name="frontend_map_default_world_follow_truck" value="1" <?php echo $formData['mapDefaults']['worldFollowTruck'] ? 'checked' : ''; ?>>
+                                    <span class="track"></span>
+                                </label>
+                            </div>
+                            <div class="toggle-card">
+                                <div class="toggle-copy">
+                                    <span class="toggle-title">Hero map follows truck by default</span>
+                                    <span>Keeps the speed-panel map locked to the truck until the viewer switches to free pan.</span>
+                                </div>
+                                <label class="switch" aria-label="Hero map follows truck by default">
+                                    <input type="checkbox" name="frontend_map_default_hero_follow_truck" value="1" <?php echo $formData['mapDefaults']['heroFollowTruck'] ? 'checked' : ''; ?>>
+                                    <span class="track"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </section>
+
                     <section class="panel">
                         <div class="head">
                             <div>
@@ -910,6 +1074,11 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                 <input id="frontend-map-tiles-overzoom-steps" name="frontend_map_tiles_overzoom_steps" type="number" min="0" step="1" value="<?php echo htmlspecialchars((string) $formData['frontend']['mapTiles']['overzoomSteps'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">Extra zoom levels allowed past the tile source native maximum.</span>
                             </div>
+                            <div class="field">
+                                <label for="frontend-map-tiles-retry-delay-ms">Tile retry delay</label>
+                                <input id="frontend-map-tiles-retry-delay-ms" name="frontend_map_tiles_retry_delay_ms" type="number" min="1000" step="500" value="<?php echo htmlspecialchars((string) $formData['frontend']['mapTiles']['retryDelayMs'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">How long the frontend waits before rechecking tile metadata when no map source is available yet.</span>
+                            </div>
                         </div>
                     </section>
                 </div>
@@ -960,6 +1129,21 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                 <input id="snapshot-directory" name="snapshot_directory" type="text" value="<?php echo htmlspecialchars($formData['snapshots']['directory'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">Files like <code>telemetry-2026-04-15T21-13-45-432Z.json</code> will be written here.</span>
                             </div>
+                            <div class="field">
+                                <label for="snapshot-filename-prefix">Snapshot filename prefix</label>
+                                <input id="snapshot-filename-prefix" name="snapshot_filename_prefix" type="text" value="<?php echo htmlspecialchars($formData['snapshots']['filenamePrefix'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Inserted wherever <code>{prefix}</code> appears in the naming pattern.</span>
+                            </div>
+                            <div class="field">
+                                <label for="snapshot-timestamp-format">Snapshot timestamp format</label>
+                                <input id="snapshot-timestamp-format" name="snapshot_timestamp_format" type="text" value="<?php echo htmlspecialchars($formData['snapshots']['timestampFormat'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">PHP date format used for the <code>{date}</code> token, like <code>Y-m-d\TH-i-s</code>.</span>
+                            </div>
+                            <div class="field full">
+                                <label for="snapshot-filename-pattern">Snapshot filename pattern</label>
+                                <input id="snapshot-filename-pattern" name="snapshot_filename_pattern" type="text" value="<?php echo htmlspecialchars($formData['snapshots']['filenamePattern'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Available tokens: <code>{prefix}</code>, <code>{date}</code>, <code>{ms}</code>, and <code>{ext}</code>. Preview: <code><?php echo htmlspecialchars($snapshotFilenamePreview, ENT_QUOTES, 'UTF-8'); ?></code></span>
+                            </div>
                         </div>
                     </section>
 
@@ -976,6 +1160,9 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                             <div class="row"><strong>Snapshot dir</strong><span><?php echo htmlspecialchars($formData['snapshots']['directory'], ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>State file</strong><span><?php echo htmlspecialchars($formData['snapshots']['stateFile'], ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>JSON format</strong><span><?php echo htmlspecialchars($formData['snapshots']['prettyPrint'] ? 'Pretty printed' : 'Compact', ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>File prefix</strong><span><?php echo htmlspecialchars($formData['snapshots']['filenamePrefix'], ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>Timestamp format</strong><span><code><?php echo htmlspecialchars($formData['snapshots']['timestampFormat'], ENT_QUOTES, 'UTF-8'); ?></code></span></div>
+                            <div class="row"><strong>Filename preview</strong><span><?php echo htmlspecialchars($snapshotFilenamePreview, ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Total files</strong><span><?php echo htmlspecialchars((string) $snapshotFileCount, ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Last snapshot</strong><span><?php echo htmlspecialchars(settings_format_datetime_ms($lastSnapshotAtMs), ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Last file</strong><span><?php echo htmlspecialchars($lastSnapshotLabel, ENT_QUOTES, 'UTF-8'); ?></span></div>
@@ -1030,10 +1217,13 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                             </div>
                             <div class="field full">
                                 <label for="import-config-json">Import config JSON</label>
-                                <textarea id="import-config-json" name="import_config_json" rows="8" placeholder="{&#10;  &quot;app&quot;: { ... },&#10;  &quot;design&quot;: { ... },&#10;  &quot;telemetry&quot;: { ... }&#10;}"></textarea>
+                                <textarea id="import-config-json" name="import_config_json" rows="8" placeholder="{&#10;  &quot;app&quot;: { ... },&#10;  &quot;design&quot;: { ... },&#10;  &quot;telemetry&quot;: { ... }&#10;}"><?php echo htmlspecialchars($importJsonInput, ENT_QUOTES, 'UTF-8'); ?></textarea>
                                 <span class="hint">You can also paste exported JSON directly here. Only the managed settings sections are imported.</span>
                             </div>
                         </div>
+                        <?php if ($importFeedback !== null): ?>
+                            <div class="inline-feedback error"><?php echo htmlspecialchars($importFeedback, ENT_QUOTES, 'UTF-8'); ?></div>
+                        <?php endif; ?>
                         <div class="actions">
                             <p>Import updates the same settings sections this page edits and keeps unrelated local config keys intact.</p>
                             <button class="button-secondary" type="submit" name="settings_action" value="import">Import Config</button>
@@ -1048,7 +1238,7 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                             </div>
                         </div>
                         <pre><?php echo htmlspecialchars($configPreview, ENT_QUOTES, 'UTF-8'); ?></pre>
-                        <div class="note">Saving here updates <code>app</code>, <code>design</code>, <code>telemetry</code>, <code>snapshots</code>, <code>frontend.telemetryEndpoint</code>, <code>frontend.storageKeys</code>, <code>frontend.telemetryPolling</code>, <code>frontend.routePlanner</code>, <code>frontend.speedRing</code>, <code>frontend.mapBounds</code>, and <code>frontend.mapTiles</code> in <code>config.local.php</code>. Other local config keys are preserved.</div>
+                        <div class="note">Saving here updates <code>app</code>, <code>design</code>, <code>telemetry</code>, <code>snapshots</code>, <code>frontend.telemetryEndpoint</code>, <code>frontend.storageKeys</code>, <code>frontend.telemetryPolling</code>, <code>frontend.routePlanner</code>, <code>frontend.speedRing</code>, <code>frontend.mapDefaults</code>, <code>frontend.mapBounds</code>, and <code>frontend.mapTiles</code> in <code>config.local.php</code>. Other local config keys are preserved.</div>
                     </section>
                 </div>
             </section>

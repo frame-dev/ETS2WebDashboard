@@ -116,6 +116,7 @@ Main configuration groups:
 - `frontend.speedRing`
 - `frontend.storageKeys`
 - `frontend.routePlanner`
+- `frontend.mapDefaults`
 - `frontend.mapBounds`
 - `frontend.mapTiles`
 
@@ -152,6 +153,9 @@ return [
         'directory' => __DIR__ . '/snapshots',
         'stateFile' => __DIR__ . '/tmp/snapshot-state.json',
         'prettyPrint' => true,
+        'filenamePrefix' => 'telemetry-',
+        'filenamePattern' => '{prefix}{date}-{ms}Z.{ext}',
+        'timestampFormat' => 'Y-m-d\\TH-i-s',
     ],
     'frontend' => [
         'telemetryEndpoint' => 'telemetry.php?format=json',
@@ -159,6 +163,8 @@ return [
             'backoffStepMs' => 1000,
             'maxBackoffMs' => 30000,
             'hiddenIntervalMs' => 12000,
+            'minimumIntervalMs' => 250,
+            'cacheMultiplier' => 2,
         ],
         'speedRing' => [
             'maxDisplayKph' => 130,
@@ -173,6 +179,12 @@ return [
             'activeTab' => 'ets2-dashboard-active-tab',
             'mapPreferences' => 'ets2-dashboard-map-preferences',
         ],
+        'mapDefaults' => [
+            'worldZoom' => 4,
+            'worldFollowTruck' => true,
+            'heroZoom' => 3,
+            'heroFollowTruck' => true,
+        ],
         'mapBounds' => [
             'minX' => -94118.3,
             'maxX' => 128280,
@@ -183,6 +195,7 @@ return [
             'baseUrlCandidates' => ['http://10.147.17.64/tiles/', 'tiles', 'maps'],
             'configNames' => ['config.json', 'TileMapInfo.json'],
             'overzoomSteps' => 3,
+            'retryDelayMs' => 8000,
         ],
     ],
 ];
@@ -271,12 +284,13 @@ There is also a standalone `snapshot.js` script in the repository, but the main 
 
 ## Feature Roadmap
 
-- Make tiles server publicly available and test tile proxying with real external sources
-- Add more telemetry details to the info workspace, such as trailer states, control inputs, and event logs
-- Add more settings controls for frontend behavior, such as map preferences and dashboard tuning
-- Implement a more robust snapshot management UI and workflow
-- Add error handling and user feedback for telemetry fetch failures, invalid config imports, and tile proxy errors
-- Explore additional dashboard widgets or visualizations based on telemetry data, such as fuel consumption graphs, engine load indicators, or route progress bars
+- [ ] Make the tile server publicly available and test tile proxying with real external sources
+- [x] Add more Settings controls for frontend behavior, such as map default zoom level, snapshot naming patterns, map settings, and telemetry polling backoff tuning
+- [ ] Add more telemetry details to the info workspace, such as trailer states, control inputs, and event logs
+- [ ] Expand frontend settings further with per-device map defaults, overlay placement controls, and mobile-specific dashboard tuning
+- [ ] Implement a more robust snapshot management UI and workflow
+- [x] Add error handling and user feedback for telemetry fetch failures, invalid config imports, and tile proxy errors
+- [ ] Explore additional dashboard widgets or visualizations based on telemetry data, such as fuel consumption graphs, engine load indicators, or route progress bars
 
 ## Notes
 

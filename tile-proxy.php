@@ -106,26 +106,66 @@ function tile_proxy_forward_header(string $headerLine): void
     header($headerLine, true);
 }
 
+function tile_proxy_client_expects_json(): bool
+{
+    $accept = strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? ''));
+    if (str_contains($accept, 'application/json')) {
+        return true;
+    }
+
+    return (string) ($_GET['format'] ?? '') === 'json';
+}
+
+function tile_proxy_safe_header_value(string $value): string
+{
+    return str_replace(["\r", "\n"], ' ', trim($value));
+}
+
+function tile_proxy_respond_error(int $statusCode, string $message, ?string $hint = null): never
+{
+    http_response_code($statusCode);
+    header('X-ETS2-Tile-Proxy-Error: ' . tile_proxy_safe_header_value($message));
+    header('X-ETS2-Tile-Proxy-Status: ' . (string) $statusCode);
+
+    $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    if ($method === 'HEAD') {
+        exit;
+    }
+
+    if (tile_proxy_client_expects_json()) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => false,
+            'error' => [
+                'status' => $statusCode,
+                'message' => $message,
+                'hint' => $hint,
+            ],
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    header('Content-Type: text/plain; charset=utf-8');
+    echo $hint !== null && trim($hint) !== ''
+        ? $message . ' ' . trim($hint)
+        : $message;
+    exit;
+}
+
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 if (!in_array($method, ['GET', 'HEAD'], true)) {
     header('Allow: GET, HEAD');
-    http_response_code(405);
-    echo 'Method not allowed.';
-    exit;
+    tile_proxy_respond_error(405, 'Method not allowed.', 'Only GET and HEAD requests are supported by the tile proxy.');
 }
 
 $requestUrl = trim((string) ($_GET['url'] ?? ''));
 if ($requestUrl === '') {
-    http_response_code(400);
-    echo 'Missing tile URL.';
-    exit;
+    tile_proxy_respond_error(400, 'Missing tile URL.', 'Pass the target tile or config URL in the url query parameter.');
 }
 
 $allowedBaseUrls = dashboard_config_value('frontend.mapTiles.baseUrlCandidates', []);
 if (!is_array($allowedBaseUrls) || !tile_proxy_url_is_allowed($requestUrl, $allowedBaseUrls)) {
-    http_response_code(403);
-    echo 'Tile URL is not allowed.';
-    exit;
+    tile_proxy_respond_error(403, 'Tile URL is not allowed.', 'Add the matching base URL to frontend.mapTiles.baseUrlCandidates in your dashboard config.');
 }
 
 $timeoutSeconds = max(1.0, ((int) dashboard_config_value('telemetry.requestTimeoutMs', 4500)) / 1000);
@@ -143,9 +183,7 @@ $responseHeaders = $http_response_header ?? [];
 $statusCode = tile_proxy_status_code(is_array($responseHeaders) ? $responseHeaders : []);
 
 if ($statusCode === null) {
-    http_response_code(502);
-    echo 'Failed to reach tile server.';
-    exit;
+    tile_proxy_respond_error(502, 'Failed to reach tile server.', 'Check that the configured map tile server is running and reachable from PHP.');
 }
 
 http_response_code($statusCode);

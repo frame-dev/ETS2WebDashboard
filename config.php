@@ -34,6 +34,9 @@ function dashboard_config_defaults(): array
             'directory' => __DIR__ . '/snapshots',
             'stateFile' => __DIR__ . '/tmp/snapshot-state.json',
             'prettyPrint' => true,
+            'filenamePrefix' => 'telemetry-',
+            'filenamePattern' => '{prefix}{date}-{ms}Z.{ext}',
+            'timestampFormat' => 'Y-m-d\TH-i-s',
         ],
         'frontend' => [
             'telemetryEndpoint' => 'telemetry.php?format=json',
@@ -41,6 +44,8 @@ function dashboard_config_defaults(): array
                 'backoffStepMs' => 1000,
                 'maxBackoffMs' => 30000,
                 'hiddenIntervalMs' => 12000,
+                'minimumIntervalMs' => 250,
+                'cacheMultiplier' => 2,
             ],
             'speedRing' => [
                 'maxDisplayKph' => 130,
@@ -55,6 +60,12 @@ function dashboard_config_defaults(): array
                 'averageKph' => 63,
                 'realTimeScale' => 17.5,
             ],
+            'mapDefaults' => [
+                'worldZoom' => 4,
+                'worldFollowTruck' => true,
+                'heroZoom' => 3,
+                'heroFollowTruck' => true,
+            ],
             'mapBounds' => [
                 'minX' => -94118.3,
                 'maxX' => 128280,
@@ -65,6 +76,7 @@ function dashboard_config_defaults(): array
                 'baseUrlCandidates' => ['http://10.147.17.64/tiles/', 'tiles', 'maps', 'http://127.0.0.1:8081'],
                 'configNames' => ['config.json', 'TileMapInfo.json'],
                 'overzoomSteps' => 3,
+                'retryDelayMs' => 8000,
             ],
         ],
     ];

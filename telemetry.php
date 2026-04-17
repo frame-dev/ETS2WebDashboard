@@ -107,7 +107,28 @@ function telemetry_snapshot_build_filename(int $timestampMs): string
         return 'telemetry-' . gmdate('Y-m-d\TH-i-s\Z') . '.json';
     }
 
-    return sprintf(
+    $prefix = trim((string) dashboard_config_value('snapshots.filenamePrefix', 'telemetry-'));
+    $pattern = trim((string) dashboard_config_value('snapshots.filenamePattern', '{prefix}{date}-{ms}Z.{ext}'));
+    $timestampFormat = trim((string) dashboard_config_value('snapshots.timestampFormat', 'Y-m-d\TH-i-s'));
+
+    if ($pattern === '') {
+        $pattern = '{prefix}{date}-{ms}Z.{ext}';
+    }
+
+    if ($timestampFormat === '') {
+        $timestampFormat = 'Y-m-d\TH-i-s';
+    }
+
+    $filename = strtr($pattern, [
+        '{prefix}' => $prefix,
+        '{date}' => $date->format($timestampFormat),
+        '{ms}' => str_pad((string) ($timestampMs % 1000), 3, '0', STR_PAD_LEFT),
+        '{ext}' => 'json',
+    ]);
+    $sanitized = preg_replace('/[<>:"\/\\\\|?*\x00-\x1F]+/', '-', $filename);
+    $sanitized = is_string($sanitized) ? trim($sanitized, ". \t\n\r\0\x0B") : '';
+
+    return $sanitized !== '' ? $sanitized : sprintf(
         'telemetry-%s-%03dZ.json',
         $date->format('Y-m-d\TH-i-s'),
         $timestampMs % 1000
