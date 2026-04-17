@@ -1425,6 +1425,47 @@ function getTileUrl(zoom, x, y) {
     return buildTileUrl(tileMapState.baseUrl, tileMapState.tileTemplate, zoom, x, y);
 }
 
+function syncTileLayer(container, tileClassName, tiles) {
+    const existingNodes = new Map(
+        Array.from(container.children)
+            .filter((node) => node instanceof HTMLImageElement)
+            .map((node) => [node.dataset.tileKey || "", node]),
+    );
+    const orderedNodes = [];
+
+    for (const tile of tiles) {
+        const key = tile.key;
+        let node = existingNodes.get(key);
+
+        if (!node) {
+            node = document.createElement("img");
+            node.className = tileClassName;
+            node.alt = "";
+            node.loading = "lazy";
+            node.dataset.tileKey = key;
+        }
+
+        if (node.src !== tile.src) {
+            node.src = tile.src;
+        }
+
+        const nextStyle = `left:${tile.left}px;top:${tile.top}px;width:${tile.size}px;height:${tile.size}px;`;
+        if (node.getAttribute("style") !== nextStyle) {
+            node.setAttribute("style", nextStyle);
+        }
+
+        orderedNodes.push(node);
+    }
+
+    const currentNodes = Array.from(container.children);
+    const isSameOrder = currentNodes.length === orderedNodes.length
+        && currentNodes.every((node, index) => node === orderedNodes[index]);
+
+    if (!isSameOrder) {
+        container.replaceChildren(...orderedNodes);
+    }
+}
+
 function renderTileMap(centerX, centerY) {
     if (!tileMapState.initialized || !elements.ets2MapStage || !elements.ets2MapTiles || !tileMapState.config) {
         return null;
@@ -1457,19 +1498,17 @@ function renderTileMap(centerX, centerY) {
             const screenLeft = (tileX * tileWorldSize - viewLeft) / resolution;
             const screenTop = (tileY * tileWorldSize - viewTop) / resolution;
 
-            tiles.push(`
-                <img
-                    class="ets2-map-tile"
-                    src="${escapeHtml(getTileUrl(fetchZoom, tileX, tileY))}"
-                    alt=""
-                    loading="lazy"
-                    style="left:${screenLeft}px;top:${screenTop}px;width:${tileWorldSize / resolution}px;height:${tileWorldSize / resolution}px;"
-                >
-            `);
+            tiles.push({
+                key: `${fetchZoom}:${tileX}:${tileY}`,
+                src: getTileUrl(fetchZoom, tileX, tileY),
+                left: screenLeft,
+                top: screenTop,
+                size: tileWorldSize / resolution,
+            });
         }
     }
 
-    elements.ets2MapTiles.innerHTML = tiles.join("");
+    syncTileLayer(elements.ets2MapTiles, "ets2-map-tile", tiles);
     if (elements.ets2MapFallback) {
         elements.ets2MapFallback.classList.remove("is-visible");
     }
@@ -1522,19 +1561,17 @@ function renderHeroTileMap(centerX, centerY, markerHeadingDeg) {
             const screenLeft = (tileX * tileWorldSize - viewLeft) / resolution;
             const screenTop = (tileY * tileWorldSize - viewTop) / resolution;
 
-            tiles.push(`
-                <img
-                    class="hero-map-tile"
-                    src="${escapeHtml(getTileUrl(fetchZoom, tileX, tileY))}"
-                    alt=""
-                    loading="lazy"
-                    style="left:${screenLeft}px;top:${screenTop}px;width:${tileWorldSize / resolution}px;height:${tileWorldSize / resolution}px;"
-                >
-            `);
+            tiles.push({
+                key: `${fetchZoom}:${tileX}:${tileY}`,
+                src: getTileUrl(fetchZoom, tileX, tileY),
+                left: screenLeft,
+                top: screenTop,
+                size: tileWorldSize / resolution,
+            });
         }
     }
 
-    elements.heroMapTiles.innerHTML = tiles.join("");
+    syncTileLayer(elements.heroMapTiles, "hero-map-tile", tiles);
     if (elements.heroMapFallback) {
         elements.heroMapFallback.classList.remove("is-visible");
     }
