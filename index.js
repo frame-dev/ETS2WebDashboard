@@ -407,7 +407,6 @@ function loadCityLocalizations() {
 
                 cityLocalizationState.cityByKey = lookup;
                 cityLocalizationState.loaded = true;
-                clearDashboardIssue("map");
 
                 rerenderMapsFromLatestData(true);
                 return;
