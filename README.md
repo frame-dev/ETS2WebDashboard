@@ -299,7 +299,6 @@ There is also a standalone `snapshot.js` script in the repository, but the main 
 ## Notes
 
 - `router.php` makes the project root load `indexV2.php`, so the V2 dashboard is the default landing page.
-- The repository currently keeps the older `index.php` alongside the newer V2 dashboard.
 - The settings page manages a defined set of configuration keys and preserves unrelated local config values during import/update flows.
 
 ## License
