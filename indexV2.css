@@ -28,7 +28,7 @@
     --speed-ring-size: 176px;
     --speed-ring-padding: 12px;
     --speed-ring-inner-padding: 24px 12px;
-    --speed-ring-unit-top: 29px;
+    --speed-ring-unit-top: 35px;
     --hero-map-marker-heading: 0deg;
     font-family: "Space Grotesk", "Aptos", "Segoe UI", sans-serif;
 }
@@ -334,13 +334,15 @@ noscript p {
     border-radius: 24px;
     border: 1px solid rgba(184, 226, 255, 0.16);
     background:
-        linear-gradient(180deg, rgba(9, 20, 32, 0.82), rgba(8, 18, 31, 0.6)),
-        radial-gradient(circle at top, rgba(111, 198, 255, 0.1), transparent 52%);
+        radial-gradient(circle at 20% 14%, rgba(111, 198, 255, 0.12), transparent 0 34%),
+        radial-gradient(circle at 82% 82%, rgba(84, 239, 199, 0.09), transparent 0 38%),
+        linear-gradient(180deg, rgba(10, 23, 36, 0.9), rgba(8, 18, 31, 0.7));
     pointer-events: none;
     margin: 14px 14px 0 0;
     box-shadow:
-        0 18px 38px rgba(0, 0, 0, 0.28),
-        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        0 22px 44px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07),
+        inset 0 -18px 40px rgba(5, 12, 20, 0.32);
 }
 
 .speed-ring {
@@ -352,18 +354,47 @@ noscript p {
     display: grid;
     place-items: center;
     background:
-        radial-gradient(circle at center, rgba(8, 18, 31, 0.96) 59%, transparent 60%),
+        radial-gradient(circle at 50% 50%, rgba(7, 15, 25, 0.96) 58%, transparent 59%),
+        radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.08), transparent 0 34%),
+        conic-gradient(from -90deg, rgba(255, 255, 255, 0.2) 0deg, rgba(255, 255, 255, 0) 48deg, rgba(255, 255, 255, 0.1) 360deg),
         conic-gradient(from -90deg, var(--ring-color) 0 var(--speed-progress), var(--ring-track-color) var(--speed-progress) 100%);
     box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-        inset 0 0 36px rgba(84, 239, 199, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+        inset 0 0 30px rgba(84, 239, 199, 0.12),
+        inset 0 -16px 30px rgba(5, 10, 18, 0.34),
         0 22px 48px rgba(0, 0, 0, 0.34);
+    overflow: hidden;
+}
+
+.speed-ring::before,
+.speed-ring::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.speed-ring::before {
+    inset: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        inset 0 0 0 1px rgba(111, 198, 255, 0.05);
+}
+
+.speed-ring::after {
+    inset: 20px;
+    background:
+        radial-gradient(circle at 50% 8%, rgba(255, 255, 255, 0.12), transparent 0 36%),
+        radial-gradient(circle at 50% 100%, rgba(84, 239, 199, 0.08), transparent 0 42%);
+    opacity: 0.9;
 }
 
 .speed-ring[data-engine-state="off"] {
     box-shadow:
         inset 0 0 0 1px rgba(255, 112, 80, 0.2),
         inset 0 0 42px rgba(255, 112, 80, 0.14),
+        inset 0 -16px 30px rgba(18, 7, 7, 0.34),
         0 18px 42px rgba(0, 0, 0, 0.42);
 }
 
@@ -371,6 +402,7 @@ noscript p {
     box-shadow:
         inset 0 0 0 1px rgba(255, 112, 80, 0.22),
         inset 0 0 54px rgba(255, 112, 80, 0.18),
+        inset 0 -16px 30px rgba(20, 8, 8, 0.36),
         0 18px 42px rgba(0, 0, 0, 0.44);
     animation: speedRingAlertPulse 900ms ease-in-out infinite;
 }
@@ -395,8 +427,12 @@ noscript p {
     height: 10px;
     border-radius: 50%;
     transform: translate(-50%, -18%);
-    background: rgba(111, 198, 255, 0.95);
-    box-shadow: 0 0 12px rgba(111, 198, 255, 0.7);
+    background:
+        radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 42%),
+        rgba(111, 198, 255, 0.95);
+    box-shadow:
+        0 0 0 2px rgba(8, 18, 31, 0.6),
+        0 0 14px rgba(111, 198, 255, 0.72);
 }
 
 .speed-ring-inner {
@@ -411,9 +447,13 @@ noscript p {
     text-align: center;
     border: 1px solid rgba(170, 220, 255, 0.16);
     background:
-        radial-gradient(circle at top, rgba(111, 198, 255, 0.1), transparent 56%),
-        linear-gradient(160deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        radial-gradient(circle at 50% 0%, rgba(111, 198, 255, 0.14), transparent 0 50%),
+        radial-gradient(circle at 50% 100%, rgba(84, 239, 199, 0.08), transparent 0 42%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.014));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        inset 0 -18px 28px rgba(5, 10, 18, 0.34);
+    backdrop-filter: blur(10px);
 }
 
 .speed-unit {
@@ -425,6 +465,7 @@ noscript p {
     font-size: 0.66rem;
     text-transform: uppercase;
     letter-spacing: 0.16em;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
 }
 
 .speed-value {
@@ -434,40 +475,82 @@ noscript p {
     font-size: clamp(2.45rem, 6vw, 3.9rem);
     line-height: 0.88;
     font-weight: 700;
+    letter-spacing: -0.03em;
+    text-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.3),
+        0 0 16px rgba(111, 198, 255, 0.12);
 }
 
 .road-speed,
 .cruise-control-speed {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    max-width: calc(100% - 26px);
-    min-height: 22px;
-    padding: 2px 8px;
+    justify-content: space-between;
+    align-self: center;
+    width: calc(var(--speed-ring-size) - 12px);
+    max-width: 100%;
+    min-height: 24px;
+    padding: 3px 10px;
     border-radius: 999px;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.05em;
     font-size: 0.62rem;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.07),
+        0 6px 16px rgba(0, 0, 0, 0.16);
+    backdrop-filter: blur(8px);
 }
 
 .road-speed {
-    top: 17px;
     color: #d8efff;
-    background: rgba(111, 198, 255, 0.12);
-    border: 1px solid rgba(111, 198, 255, 0.22);
+    background:
+        linear-gradient(180deg, rgba(111, 198, 255, 0.16), rgba(111, 198, 255, 0.08));
+    border: 1px solid rgba(111, 198, 255, 0.24);
 }
 
 .cruise-control-speed {
-    bottom: 17px;
     color: #dcfff5;
-    background: rgba(84, 239, 199, 0.12);
-    border: 1px solid rgba(84, 239, 199, 0.22);
+    background:
+        linear-gradient(180deg, rgba(84, 239, 199, 0.16), rgba(84, 239, 199, 0.08));
+    border: 1px solid rgba(84, 239, 199, 0.24);
+}
+
+.speed-readout-label,
+.speed-readout-reading {
+    display: inline-flex;
+    align-items: baseline;
+}
+
+.speed-readout-label {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 56%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.84;
+    font-size: 0.5rem;
+    letter-spacing: 0.12em;
+}
+
+.speed-readout-reading {
+    flex: 0 0 auto;
+    gap: 2px;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    font-size: 0.62rem;
+}
+
+.speed-readout-value {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.speed-readout-unit {
+    opacity: 0.82;
 }
 
 .speed-ring-stats {
@@ -491,18 +574,22 @@ noscript p {
     font-size: 0.64rem;
     line-height: 1;
     white-space: nowrap;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 8px 18px rgba(0, 0, 0, 0.14);
+    backdrop-filter: blur(8px);
 }
 
 .speed-peak {
     color: #d9fff3;
     border: 1px solid rgba(84, 239, 199, 0.18);
-    background: rgba(84, 239, 199, 0.06);
+    background: linear-gradient(180deg, rgba(84, 239, 199, 0.11), rgba(84, 239, 199, 0.05));
 }
 
 .speed-trend {
     color: #d8efff;
     border: 1px solid rgba(111, 198, 255, 0.18);
-    background: rgba(111, 198, 255, 0.06);
+    background: linear-gradient(180deg, rgba(111, 198, 255, 0.11), rgba(111, 198, 255, 0.05));
 }
 
 .speed-trend[data-trend="rising"] {
@@ -520,7 +607,7 @@ noscript p {
 .speed-alert {
     color: #ffd9e3;
     border: 1px solid rgba(255, 112, 150, 0.24);
-    background: rgba(255, 112, 150, 0.1);
+    background: linear-gradient(180deg, rgba(255, 112, 150, 0.13), rgba(255, 112, 150, 0.07));
     opacity: 0;
     transform: translateY(-2px);
     transition: opacity 120ms ease, transform 120ms ease;
@@ -1009,10 +1096,6 @@ noscript p {
     white-space: nowrap;
 }
 
-#tempomat-speed-limit {
-    font-size: 14px;
-}
-
 @keyframes speedRingAlertPulse {
     0%,
     100% {
@@ -1025,6 +1108,13 @@ noscript p {
 }
 
 @media (max-width: 1100px) {
+    .hero-panel {
+        --speed-ring-size: 156px;
+        --speed-ring-padding: 11px;
+        --speed-ring-inner-padding: 22px 11px;
+        --speed-ring-unit-top: 31px;
+    }
+
     .dashboard-shell {
         padding-top: 36px;
     }
@@ -1069,11 +1159,11 @@ noscript p {
         grid-row: 2;
         justify-self: end;
         align-items: center;
-        width: calc(var(--speed-ring-size) + 20px);
-        padding: 10px 10px 12px;
-        margin: 10px 10px 0 0;
-        gap: 8px;
-        border-radius: 18px;
+        width: calc(var(--speed-ring-size) + 18px);
+        padding: 9px 9px 11px;
+        margin: 8px 8px 0 0;
+        gap: 7px;
+        border-radius: 17px;
     }
 
     .speed-meta {
@@ -1098,17 +1188,20 @@ noscript p {
 
     .road-speed,
     .cruise-control-speed {
-        max-width: calc(100% - 18px);
-        min-height: 17px;
-        padding: 1px 6px;
+        width: calc(var(--speed-ring-size) - 10px);
+        max-width: 100%;
+        min-height: 18px;
+        padding: 1px 7px;
+        font-size: 0.56rem;
     }
 
-    .road-speed {
-        top: 11px;
+    .speed-readout-label {
+        font-size: 0.46rem;
+        letter-spacing: 0.1em;
     }
 
-    .cruise-control-speed {
-        bottom: 11px;
+    .speed-readout-reading {
+        font-size: 0.56rem;
     }
 
     .speed-ring-stats {
@@ -1120,7 +1213,7 @@ noscript p {
     .speed-alert {
         min-height: 18px;
         padding: 2px 6px;
-        font-size: 0.56rem;
+        font-size: 0.52rem;
     }
 
     .hero-map {
@@ -1131,29 +1224,29 @@ noscript p {
     .hero-route {
         grid-column: 1;
         grid-row: 2;
-        width: min(620px, calc(100% - 18px));
-        padding: 10px 11px;
-        margin: 0 0 10px 10px;
-        gap: 7px 8px;
-        border-radius: 14px;
+        width: min(420px, calc(100% - 16px));
+        padding: 8px 9px;
+        margin: 0 0 8px 8px;
+        gap: 6px 7px;
+        border-radius: 13px;
     }
 
     .from-to {
-        font-size: 0.64rem;
+        font-size: 0.56rem;
     }
 
     .from-to-value {
-        font-size: 0.94rem;
-        line-height: 1.28;
+        font-size: 0.84rem;
+        line-height: 1.22;
     }
 
     .route-distance,
     .route-time,
     .route-real-time,
     .fuel-range {
-        min-height: 24px;
-        padding: 4px 8px;
-        font-size: 0.72rem;
+        min-height: 20px;
+        padding: 3px 7px;
+        font-size: 0.62rem;
     }
 
     .hero-map {
@@ -1229,6 +1322,13 @@ noscript p {
 }
 
 @media (max-width: 760px) {
+    .hero-panel {
+        --speed-ring-size: 142px;
+        --speed-ring-padding: 10px;
+        --speed-ring-inner-padding: 20px 10px;
+        --speed-ring-unit-top: 29px;
+    }
+
     .dashboard-shell {
         width: min(100%, calc(100% - 18px));
         margin: 9px auto;
@@ -1267,11 +1367,11 @@ noscript p {
     }
 
     .hero-speed {
-        padding: 10px 10px 12px;
-        margin: 10px 10px 0 0;
-        width: calc(var(--speed-ring-size) + 20px);
-        gap: 8px;
-        border-radius: 18px;
+        padding: 8px 8px 10px;
+        margin: 8px 8px 0 0;
+        width: calc(var(--speed-ring-size) + 16px);
+        gap: 6px;
+        border-radius: 16px;
     }
 
     .speed-meta {
@@ -1297,17 +1397,20 @@ noscript p {
 
     .road-speed,
     .cruise-control-speed {
-        max-width: calc(100% - 16px);
+        width: calc(var(--speed-ring-size) - 10px);
+        max-width: 100%;
         min-height: 16px;
-        padding: 1px 5px;
+        padding: 1px 6px;
+        font-size: 0.54rem;
     }
 
-    .road-speed {
-        top: 10px;
+    .speed-readout-label {
+        font-size: 0.44rem;
+        letter-spacing: 0.1em;
     }
 
-    .cruise-control-speed {
-        bottom: 10px;
+    .speed-readout-reading {
+        font-size: 0.54rem;
     }
 
     .speed-ring-stats {
@@ -1317,37 +1420,37 @@ noscript p {
     .speed-peak,
     .speed-trend,
     .speed-alert {
-        min-height: 18px;
-        padding: 2px 6px;
-        font-size: 0.54rem;
+        min-height: 17px;
+        padding: 2px 5px;
+        font-size: 0.5rem;
     }
 
     .hero-route {
-        padding: 10px 11px;
-        width: calc(100% - 16px);
-        margin: 0 0 10px 10px;
-        gap: 7px 8px;
-        border-radius: 14px;
+        width: min(272px, calc(100% - 16px));
+        padding: 8px 9px;
+        margin: 0 0 8px 8px;
+        gap: 5px 6px;
+        border-radius: 12px;
     }
 
     .from-to {
-        font-size: 0.62rem;
-        letter-spacing: 0.11em;
+        font-size: 0.54rem;
+        letter-spacing: 0.1em;
     }
 
     .from-to-value {
-        font-size: 0.92rem;
-        line-height: 1.28;
+        font-size: 0.8rem;
+        line-height: 1.2;
     }
 
     .route-distance,
     .route-time,
     .route-real-time,
     .fuel-range {
-        white-space: normal;
-        min-height: 24px;
-        padding: 4px 8px;
-        font-size: 0.7rem;
+        white-space: nowrap;
+        min-height: 20px;
+        padding: 3px 7px;
+        font-size: 0.6rem;
     }
 
     .hero-map {
@@ -1440,16 +1543,25 @@ noscript p {
 }
 
 @media (max-width: 420px) {
+    .hero-panel {
+        --speed-ring-size: 122px;
+        --speed-ring-padding: 9px;
+        --speed-ring-inner-padding: 17px 8px;
+        --speed-ring-unit-top: 24px;
+    }
+
     .hero-speed {
-        width: calc(var(--speed-ring-size) + 16px);
-        margin: 8px 8px 0 0;
-        padding: 8px 8px 10px;
+        width: calc(var(--speed-ring-size) + 12px);
+        margin: 7px 7px 0 0;
+        padding: 7px 7px 8px;
     }
 
     .hero-route {
-        width: calc(100% - 12px);
+        width: min(232px, calc(100% - 12px));
         margin: 0 0 8px 8px;
-        padding: 8px 9px;
+        padding: 7px 8px;
+        gap: 4px 5px;
+        border-radius: 11px;
     }
 
     .hero-map {
@@ -1460,6 +1572,47 @@ noscript p {
         width: min(200px, calc(100% - 16px));
         top: 8px;
         left: 8px;
+    }
+
+    .road-speed,
+    .cruise-control-speed {
+        width: calc(var(--speed-ring-size) - 8px);
+        min-height: 15px;
+        padding: 1px 5px;
+        font-size: 0.5rem;
+    }
+
+    .from-to {
+        font-size: 0.5rem;
+    }
+
+    .from-to-value {
+        font-size: 0.72rem;
+    }
+
+    .route-distance,
+    .route-time,
+    .route-real-time,
+    .fuel-range {
+        min-height: 18px;
+        padding: 2px 6px;
+        font-size: 0.54rem;
+    }
+
+    .speed-readout-label {
+        font-size: 0.4rem;
+    }
+
+    .speed-readout-reading {
+        font-size: 0.5rem;
+    }
+
+    .speed-peak,
+    .speed-trend,
+    .speed-alert {
+        min-height: 16px;
+        padding: 2px 5px;
+        font-size: 0.46rem;
     }
 
     .more-info {

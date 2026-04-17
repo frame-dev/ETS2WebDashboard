@@ -126,15 +126,27 @@ $json_flags = JSON_UNESCAPED_SLASHES
             </div>
 
             <div class="hero-speed">
+                <span class="road-speed" id="road-speed-value">
+                    <span class="speed-readout-label">Road limit</span>
+                    <span class="speed-readout-reading">
+                        <span class="speed-readout-value" id="road-speed-limit">--</span>
+                        <span class="speed-readout-unit">km/h</span>
+                    </span>
+                </span>
                 <div class="speed-ring" id="speed-ring">
                     <span class="speed-limit-marker" id="speed-limit-marker" aria-hidden="true"></span>
                     <div class="speed-ring-inner">
                         <span class="speed-unit">km/h</span>
                         <span class="speed-value" id="hero-speed-value">0</span>
-                        <span class="road-speed" id="road-speed-value">Road limit <span id="road-speed-limit">--</span>km/h</span>
-                        <span class="cruise-control-speed" id="cruise-control-speed">Tempomat <span id="tempomat-speed-limit">--</span>km/h</span>
                     </div>
                 </div>
+                <span class="cruise-control-speed" id="cruise-control-speed">
+                    <span class="speed-readout-label">Tempomat</span>
+                    <span class="speed-readout-reading">
+                        <span class="speed-readout-value" id="tempomat-speed-limit">--</span>
+                        <span class="speed-readout-unit">km/h</span>
+                    </span>
+                </span>
                 <div class="speed-ring-stats" id="speed-ring-stats">
                     <span class="speed-peak" id="speed-peak">Peak --</span>
                     <span class="speed-trend" id="speed-trend">Trend --</span>

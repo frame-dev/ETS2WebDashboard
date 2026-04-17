@@ -45,10 +45,6 @@ const tileMapState = {
     followTruck: true,
     manualCenter: null,
     currentTruckPixel: null,
-    previousTruckWorld: null,
-    headingTransform: "normal",
-    headingOffsetDeg: 0,
-    headingCalibrationSamples: 0,
     lastView: null,
     drag: {
         active: false,
@@ -650,8 +646,8 @@ function formatNumber(value, digits = 0) {
     }).format(parsed);
 }
 
-function formatTruckSpeed(speedMs) {
-    const parsed = getNumber(speedMs);
+function formatTruckSpeed(speedKph) {
+    const parsed = getNumber(speedKph);
     if (parsed === null) {
         return "--";
     }
@@ -676,8 +672,7 @@ function normalizeRoadLimitKph(speedLimitValue) {
         return null;
     }
 
-    // Some telemetry sources report km/h while others report m/s.
-    return parsed > 45 ? parsed : parsed * 3.6;
+    return Math.max(0, parsed);
 }
 
 function formatPercent(value, digits = 0, ratio = false) {
@@ -781,44 +776,51 @@ function normalizeDegrees(value) {
     return ((parsed % 360) + 360) % 360;
 }
 
-function normalizeSignedDegrees(value) {
-    const normalized = normalizeDegrees(value);
-    return normalized > 180 ? normalized - 360 : normalized;
-}
-
-function shortestAngleDelta(fromDegrees, toDegrees) {
-    return normalizeSignedDegrees(toDegrees - fromDegrees);
-}
-
-function getTelemetryMarkerHeadingDegrees(headingRadians, transform = "normal") {
-    const headingDeg = (headingRadians * 180) / Math.PI;
-    if (transform === "inverted") {
-        return normalizeDegrees(90 + headingDeg);
+function getMapProjectionPoint(x, z) {
+    if (tileMapState.initialized && tileMapState.config) {
+        return gameCoordsToTilePixels(x, z, tileMapState.config);
     }
 
-    return normalizeDegrees(90 - headingDeg);
+    const width = ets2MapBounds.maxX - ets2MapBounds.minX;
+    const height = ets2MapBounds.maxZ - ets2MapBounds.minZ;
+    if (width <= 0 || height <= 0) {
+        return null;
+    }
+
+    return {
+        pixelX: clamp01((x - ets2MapBounds.minX) / width),
+        pixelY: clamp01((ets2MapBounds.maxZ - z) / height),
+    };
 }
 
-function getMarkerHeadingDegrees(headingRadians) {
-    const baseHeading = getTelemetryMarkerHeadingDegrees(headingRadians, tileMapState.headingTransform);
-    return normalizeDegrees(baseHeading + tileMapState.headingOffsetDeg);
-}
+function getMarkerHeadingDegrees(headingRadians, x, z) {
+    const heading = getNumber(headingRadians);
+    const originX = getNumber(x);
+    const originZ = getNumber(z);
+    if (heading === null) {
+        return 0;
+    }
 
-function calibrateMarkerHeading(headingRadians, movementHeadingDeg) {
-    const normalHeading = getTelemetryMarkerHeadingDegrees(headingRadians, "normal");
-    const invertedHeading = getTelemetryMarkerHeadingDegrees(headingRadians, "inverted");
-    const normalError = Math.abs(shortestAngleDelta(normalHeading, movementHeadingDeg));
-    const invertedError = Math.abs(shortestAngleDelta(invertedHeading, movementHeadingDeg));
+    if (originX === null || originZ === null) {
+        return normalizeDegrees((heading * 180) / Math.PI);
+    }
 
-    tileMapState.headingTransform = invertedError + 6 < normalError ? "inverted" : "normal";
+    const forwardSampleDistance = 32;
+    const originPoint = getMapProjectionPoint(originX, originZ);
+    const forwardPoint = getMapProjectionPoint(
+        originX + (Math.sin(heading) * forwardSampleDistance),
+        originZ + (Math.cos(heading) * forwardSampleDistance),
+    );
 
-    const baseHeading = getTelemetryMarkerHeadingDegrees(headingRadians, tileMapState.headingTransform);
-    const correctedHeading = normalizeDegrees(baseHeading + tileMapState.headingOffsetDeg);
-    const correctionError = shortestAngleDelta(correctedHeading, movementHeadingDeg);
-    const smoothing = tileMapState.headingCalibrationSamples < 30 ? 0.24 : 0.12;
+    if (originPoint && forwardPoint) {
+        const deltaX = forwardPoint.pixelX - originPoint.pixelX;
+        const deltaY = forwardPoint.pixelY - originPoint.pixelY;
+        if (Math.abs(deltaX) > 0.0001 || Math.abs(deltaY) > 0.0001) {
+            return normalizeDegrees(((Math.atan2(deltaY, deltaX) * 180) / Math.PI) + 90);
+        }
+    }
 
-    tileMapState.headingOffsetDeg = normalizeSignedDegrees(tileMapState.headingOffsetDeg + (correctionError * smoothing));
-    tileMapState.headingCalibrationSamples += 1;
+    return normalizeDegrees((heading * 180) / Math.PI);
 }
 
 function formatGameClock(value) {
@@ -1793,7 +1795,7 @@ function renderHero(data) {
     const gameplay = data.gameplay || {};
 
     const truckName = [truck.make, truck.model].filter(Boolean).join(" ");
-    const speedKph = getNumber(truck.speed) === null ? 0 : Math.max(0, Number(truck.speed) * 3.6);
+    const speedKph = getNumber(truck.speed) === null ? 0 : Math.max(0, Number(truck.speed));
     const progress = Math.min(speedKph / speedRingMaxDisplayKph, 1) * 100;
     const roadLimitKph = normalizeRoadLimitKph(navigation.speedLimit);
     const isOverspeed = roadLimitKph !== null && speedKph > (roadLimitKph + speedRingOverspeedToleranceKph);
@@ -2315,7 +2317,6 @@ function renderMap(data) {
 
     if (!hasPosition) {
         tileMapState.currentTruckPixel = null;
-        tileMapState.previousTruckWorld = null;
         heroMapState.lastView = null;
         setHeroMapFollowTruck(true, false);
         if (elements.heroMapTiles) {
@@ -2351,21 +2352,7 @@ function renderMap(data) {
 
     const xRatio = clamp01((x - ets2MapBounds.minX) / (ets2MapBounds.maxX - ets2MapBounds.minX));
     const zRatio = clamp01((ets2MapBounds.maxZ - z) / (ets2MapBounds.maxZ - ets2MapBounds.minZ));
-    const previousWorld = tileMapState.previousTruckWorld;
-    if (previousWorld) {
-        const deltaX = x - previousWorld.x;
-        const deltaY = z - previousWorld.z;
-        const movementDistanceSquared = (deltaX * deltaX) + (deltaY * deltaY);
-
-        // Calibrate only while actually moving to avoid idle jitter.
-        if (movementDistanceSquared >= 16) {
-            const movementHeadingDeg = normalizeDegrees(((Math.atan2(deltaY, deltaX) * 180) / Math.PI) + 90);
-            calibrateMarkerHeading(heading, movementHeadingDeg);
-        }
-    }
-    tileMapState.previousTruckWorld = { x, z };
-
-    const markerHeadingDeg = getMarkerHeadingDegrees(heading);
+    const markerHeadingDeg = getMarkerHeadingDegrees(heading, x, z);
     const labelParts = [truck.licensePlate || "Truck"];
 
     if (job.destinationCity) {
@@ -2484,7 +2471,7 @@ function renderTelemetry(payload) {
 
 async function updateTelemetry() {
     if (telemetryRequestInFlight) {
-        scheduleTelemetryUpdate(Math.max(750, refreshIntervalMs));
+        scheduleTelemetryUpdate(refreshIntervalMs);
         return;
     }
 
@@ -2682,7 +2669,7 @@ window.addEventListener("beforeunload", () => {
 if (typeof document !== "undefined") {
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
-            scheduleTelemetryUpdate(200);
+            scheduleTelemetryUpdate(refreshIntervalMs);
             return;
         }
 

@@ -16,9 +16,9 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) also rou
 ## Features
 
 - Live ETS2 telemetry polling from a configurable upstream endpoint
-- Main dashboard with a large speed ring, live speed limit, cruise-control readouts, route distance, ETA, scaled real-time ETA, and fuel range
+- Main dashboard with a large speed ring, direct km/h telemetry readouts, road-limit and tempomat pills anchored to the top and bottom of the ring, route distance, ETA, scaled real-time ETA, and fuel range
 - Dashboard status widgets for connection state, last update time, and active refresh interval
-- Draggable and zoomable hero map with center controls and a live job overlay
+- Draggable and zoomable hero map with center controls, corrected truck heading, and a live job overlay
 - Delivery-complete popup with income, XP, trip distance, and parking result
 - Direct dashboard links to `settings.php` and the `infos.php` workspace
 - Expanded information page in `infos.php` with `Overview`, `Systems`, `World`, and `Debug` tabs
@@ -95,6 +95,12 @@ It is split into these tabs:
 
 The settings page edits the managed parts of `config.local.php` without requiring manual PHP edits for every change.
 
+### Refresh And Speed Units
+
+- The default telemetry refresh interval is `250ms`.
+- Frontend speed values are treated as the telemetry source's native km/h values and are not converted with `* 3.6`.
+- The hero speed ring uses the same km/h values for the center speed, overspeed state, peak tracking, road-limit marker, and cruise-control readout.
+
 ## Configuration
 
 Project defaults live in `config.php`. Local overrides belong in `config.local.php`.
@@ -135,7 +141,7 @@ return [
     ],
     'telemetry' => [
         'upstreamUrl' => 'http://127.0.0.1:31377/api/ets2/telemetry',
-        'refreshIntervalMs' => 300,
+        'refreshIntervalMs' => 250,
         'requestTimeoutMs' => 4500,
         'cacheEnabled' => true,
         'cacheTtlMs' => 10000,
