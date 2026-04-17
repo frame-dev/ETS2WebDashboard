@@ -18,20 +18,22 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) also rou
 - Live ETS2 telemetry polling from a configurable upstream endpoint
 - Main dashboard with a large speed ring, direct km/h telemetry readouts, road-limit and tempomat pills anchored to the top and bottom of the ring, route distance, ETA, scaled real-time ETA, and fuel range
 - Dashboard status widgets for connection state, last update time, and active refresh interval
-- Draggable and zoomable hero map with center controls, corrected truck heading, and a live job overlay
+- Dashboard notice cards for telemetry failures, cached fallback mode, and map or tile-source issues
+- Draggable and zoomable hero map with center controls, corrected truck heading, follow defaults, and a live job overlay
 - Delivery-complete popup with income, XP, trip distance, and parking result
 - Direct dashboard links to `settings.php` and the `infos.php` workspace
 - Expanded information page in `infos.php` with `Overview`, `Systems`, `World`, and `Debug` tabs
 - System and vehicle detail views for truck profile, health, drivetrain, trailer state, controls, lighting, world position, events, and raw telemetry JSON
 - Interactive map system with saved browser preferences, configurable bounds, configurable tile sources, tile config discovery, overzoom support, and static fallback rendering
 - Optional tile proxying through `tile-proxy.php` for approved map tile sources
-- Telemetry backend with upstream fetch control, timeout handling, JSON output for polling, local cache fallback, and cache TTL control
-- Integrated snapshot pipeline with timed capture, saved runtime state, duplicate snapshot avoidance, and optional pretty-printed output
+- Telemetry backend with upstream fetch control, timeout handling, JSON output for polling, local cache fallback, cache TTL control, and clearer fetch-error reporting
+- Integrated snapshot pipeline with timed capture, saved runtime state, duplicate snapshot avoidance, optional pretty-printed output, and configurable snapshot filename patterns
 - Browser-based settings workspace with tabs for `General`, `Telemetry`, `Frontend`, `Maps`, `Snapshots`, and `Transfer`
-- Settings controls for app copy, theme colors, typography, panel styling, telemetry behavior, route planner tuning, speed ring tuning, polling behavior, storage keys, map bounds, and tile sources
-- Config transfer features including JSON import, JSON export, PHP export, and a generated managed config preview
+- Settings controls for app copy, theme colors, typography, panel styling, telemetry behavior, route planner tuning, speed ring tuning, polling behavior, storage keys, map defaults, map bounds, snapshot naming, and tile sources
+- Config transfer features including JSON import, JSON export, PHP export, generated managed config preview, and clearer inline import-error feedback
 - Managed settings writes back to `config.local.php` while preserving unrelated local config values
 - Config system with defaults in `config.php`, local overrides in `config.local.php`, environment-variable overrides, and theme color sanitization
+- Local launcher scripts with `run.bat` for Windows and `run.sh` for macOS or Linux PHP startup
 
 ## Requirements
 
@@ -50,6 +52,11 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) also rou
 ```bash
 php -S localhost:8000 router.php
 ```
+
+Or use the included launcher scripts:
+
+- Windows: `run.bat`
+- macOS/Linux: `./run.sh`
 
 5. Open `http://localhost:8000/` or `http://localhost:8000/indexV2.php` for the main dashboard.
 6. Open `http://localhost:8000/infos.php` for the extended telemetry workspace.
@@ -94,6 +101,8 @@ It is split into these tabs:
 - `Transfer`
 
 The settings page edits the managed parts of `config.local.php` without requiring manual PHP edits for every change.
+
+It now includes visual controls for shared UI styling, including font stack, font scale, panel roundness, and glass blur strength.
 
 ### Refresh And Speed Units
 
@@ -252,6 +261,8 @@ Relevant pieces:
 
 `tile-proxy.php` only allows requests to configured tile base URLs from `frontend.mapTiles.baseUrlCandidates`.
 
+When tile config loading or tile proxy requests fail, the dashboard keeps the static preview visible and shows a user-facing warning notice.
+
 ## Snapshots
 
 Snapshot generation is integrated into the PHP telemetry pipeline.
@@ -261,6 +272,7 @@ When enabled:
 - timestamped JSON files are written into `snapshots/`
 - runtime state is stored in `tmp/snapshot-state.json`
 - repeated writes from the same cached source can be skipped
+- snapshot naming can be tuned with a prefix, date format, and filename pattern tokens
 
 There is also a standalone `snapshot.js` script in the repository, but the main project flow uses the PHP-integrated snapshot system.
 
@@ -279,6 +291,8 @@ There is also a standalone `snapshot.js` script in the repository, but the main 
 - `config.php`: project defaults and environment override handling
 - `config.local.example.php`: local config example
 - `router.php`: PHP built-in server router that serves `indexV2.php` by default
+- `run.bat`: Windows launcher that bootstraps a local PHP runtime and runs `php -S`
+- `run.sh`: macOS/Linux launcher for local PHP startup
 - `index.php`: legacy dashboard page
 - `index.css`: legacy dashboard styling
 - `map-ets2-preview.jpg`: static map fallback image
