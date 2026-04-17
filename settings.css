@@ -30,6 +30,7 @@ body {
         radial-gradient(circle at top left, rgba(121, 199, 255, 0.12), transparent 28rem),
         radial-gradient(circle at top right, rgba(255, 191, 105, 0.08), transparent 24rem),
         linear-gradient(165deg, #040b13 0%, #091320 55%, #07101a 100%);
+    overflow-x: hidden;
 }
 
 body::before {
@@ -68,6 +69,7 @@ main {
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     box-shadow: var(--shadow);
+    min-width: 0;
 }
 
 .hero {
@@ -165,6 +167,7 @@ p {
     display: grid;
     gap: 10px;
     align-content: space-between;
+    min-width: 0;
 }
 
 .back {
@@ -228,6 +231,7 @@ p {
     box-shadow:
         0 24px 56px rgba(0, 0, 0, 0.3),
         var(--glass-shadow);
+    min-width: 0;
 }
 
 .head {
@@ -236,6 +240,7 @@ p {
     align-items: center;
     gap: 16px;
     margin-bottom: 18px;
+    flex-wrap: wrap;
 }
 
 .head h2 {
@@ -343,12 +348,14 @@ textarea::placeholder {
 .toggle-copy {
     display: grid;
     gap: 6px;
+    min-width: 0;
 }
 
 .toggle-copy span:last-child {
     color: var(--muted);
     font-size: 0.84rem;
     line-height: 1.45;
+    overflow-wrap: anywhere;
 }
 
 .switch {
@@ -410,6 +417,7 @@ textarea::placeholder {
     font-size: 0.82rem;
     line-height: 1.45;
     max-width: 50ch;
+    overflow-wrap: anywhere;
 }
 
 .button-cluster {
@@ -417,6 +425,7 @@ textarea::placeholder {
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
+    min-width: 0;
 }
 
 .save {
@@ -517,6 +526,7 @@ pre {
     margin: 0;
     padding: 16px;
     overflow: auto;
+    max-width: 100%;
     border-radius: 18px;
     border: 1px solid rgba(150, 205, 240, 0.08);
     background: rgba(3, 8, 15, 0.82);
@@ -626,7 +636,7 @@ input[type="file"]::file-selector-button {
 
 @media (max-width: 720px) {
     main {
-        width: min(100% - 18px, 1240px);
+        width: calc(100% - 18px);
         margin-top: 10px;
     }
 
@@ -650,6 +660,41 @@ input[type="file"]::file-selector-button {
         grid-template-columns: 1fr;
     }
 
+    .panel {
+        padding: 16px;
+    }
+
+    .head {
+        gap: 10px;
+    }
+
+    .hero-side,
+    .tabs-shell,
+    .tab-layout,
+    .settings-form,
+    .panel-spaced,
+    .runtime,
+    .files,
+    .file {
+        min-width: 0;
+    }
+
+    .toggle-card {
+        min-height: 0;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .actions {
+        align-items: stretch;
+    }
+
+    .actions p,
+    .button-cluster {
+        width: 100%;
+        max-width: none;
+    }
+
     .row {
         grid-template-columns: 1fr;
     }
@@ -659,6 +704,11 @@ input[type="file"]::file-selector-button {
     .button-secondary {
         width: 100%;
         justify-content: center;
+    }
+
+    .savebar .button-cluster {
+        width: 100%;
+        justify-content: stretch;
     }
 }
 
@@ -717,6 +767,7 @@ input[type="file"]::file-selector-button {
 .settings-tab-panel {
     display: none;
     gap: 14px;
+    min-width: 0;
 }
 
 .settings-tab-panel.is-active {
@@ -799,6 +850,11 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 @media (max-width: 1080px) {
+    .tabs-shell,
+    .savebar {
+        position: static;
+    }
+
     .savebar {
         flex-direction: column;
         align-items: stretch;
@@ -806,10 +862,6 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 @media (max-width: 720px) {
-    .tabs-shell {
-        top: 8px;
-    }
-
     .settings-tabs {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -818,6 +870,7 @@ input[type="color"]::-webkit-color-swatch {
     .settings-tab {
         width: 100%;
         justify-content: center;
+        padding: 0 12px;
     }
 
     .color-control {
@@ -825,7 +878,103 @@ input[type="color"]::-webkit-color-swatch {
         flex-direction: column;
     }
 
-    .savebar {
-        bottom: 8px;
+    pre {
+        padding: 12px;
+        font-size: 0.74rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    input[type="file"] {
+        padding: 10px 12px;
+    }
+
+    input[type="file"]::file-selector-button {
+        display: block;
+        width: 100%;
+        margin: 0 0 10px;
+    }
+}
+
+@media (max-width: 520px) {
+    main {
+        width: calc(100% - 14px);
+        margin: 7px auto;
+    }
+
+    .hero,
+    .panel,
+    .stat,
+    .file {
+        border-radius: 18px;
+    }
+
+    .hero,
+    .panel {
+        padding: 14px;
+    }
+
+    .settings-tabs {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-tab {
+        min-height: 40px;
+        font-size: 0.88rem;
+    }
+
+    .hero-badge,
+    .badge,
+    .back,
+    .button-secondary,
+    .save {
+        min-height: 42px;
+    }
+
+    .eyebrow {
+        font-size: 0.64rem;
+    }
+
+    .head h2 {
+        font-size: 1.12rem;
+    }
+
+    .sub,
+    .hint,
+    .note,
+    .meta,
+    .actions p {
+        font-size: 0.78rem;
+    }
+
+    .row {
+        gap: 6px;
+        padding: 10px 0;
+    }
+
+    input[type="number"],
+    input[type="text"],
+    input[type="file"],
+    textarea {
+        min-height: 44px;
+        padding: 10px 12px;
+        border-radius: 14px;
+    }
+
+    textarea {
+        min-height: 96px;
+    }
+
+    .toggle-card {
+        padding: 14px;
+        border-radius: 16px;
+    }
+
+    .color-control {
+        min-height: 0;
+        padding: 8px;
+        gap: 8px;
     }
 }

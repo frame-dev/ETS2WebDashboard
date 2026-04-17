@@ -524,6 +524,7 @@ $configPreview = settings_export_local_config($managedConfig);
 $documentTitle = (string) ($formData['app']['pageTitle'] !== '' ? $formData['app']['pageTitle'] : $appTitle);
 $themeStyle = settings_build_theme_style($formData['design']);
 $lastSnapshotLabel = $lastSnapshotFile !== '' ? basename($lastSnapshotFile) : 'No snapshots written yet';
+$settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time());
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -531,7 +532,7 @@ $lastSnapshotLabel = $lastSnapshotFile !== '' ? basename($lastSnapshotFile) : 'N
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Settings | <?php echo htmlspecialchars($documentTitle, ENT_QUOTES, 'UTF-8'); ?></title>
-    <link rel="stylesheet" href="settings.css">
+    <link rel="stylesheet" href="settings.css?v=<?php echo htmlspecialchars($settingsCssVersion, ENT_QUOTES, 'UTF-8'); ?>">
 </head>
 <body style="<?php echo htmlspecialchars($themeStyle, ENT_QUOTES, 'UTF-8'); ?>">
     <main>
