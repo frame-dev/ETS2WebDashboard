@@ -17,15 +17,17 @@ $design_config = [
     'accentWarmColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.accentWarmColor', '#FFBF69'), '#FFBF69'),
     'successColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.successColor', '#43D79F'), '#43D79F'),
     'dangerColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.dangerColor', '#FF7050'), '#FF7050'),
+    'fontFamily' => dashboard_sanitize_font_family((string) dashboard_config_value('design.fontFamily', '"Space Grotesk", "Aptos", "Segoe UI", sans-serif'), '"Space Grotesk", "Aptos", "Segoe UI", sans-serif'),
+    'fontScale' => (float) dashboard_config_value('design.fontScale', 1.0),
+    'panelRadiusPx' => (int) dashboard_config_value('design.panelRadiusPx', 28),
+    'glassBlurPx' => (int) dashboard_config_value('design.glassBlurPx', 26),
 ];
-$dashboard_theme_css = sprintf(
-    ':root{--teal:%1$s;--blue:%2$s;--amber:%3$s;--good:%4$s;--red:%5$s;--ring-color-off:%5$s;}',
-    $design_config['accentColor'],
-    $design_config['accentSecondaryColor'],
-    $design_config['accentWarmColor'],
-    $design_config['successColor'],
-    $design_config['dangerColor']
-);
+$dashboard_theme_css_variables = dashboard_design_theme_variables($design_config);
+$dashboard_theme_declarations = [];
+foreach ($dashboard_theme_css_variables as $name => $value) {
+    $dashboard_theme_declarations[] = $name . ':' . $value;
+}
+$dashboard_theme_css = ':root{' . implode(';', $dashboard_theme_declarations) . ';}';
 
 $refresh_interval_ms = (int) get_telemetry_refresh_interval_ms();
 $frontend_config = is_array($app_config['frontend'] ?? null) ? $app_config['frontend'] : [];

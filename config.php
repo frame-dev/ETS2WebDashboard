@@ -18,6 +18,10 @@ function dashboard_config_defaults(): array
             'accentWarmColor' => '#FFBF69',
             'successColor' => '#43D79F',
             'dangerColor' => '#FF7050',
+            'fontFamily' => '"Space Grotesk", "Aptos", "Segoe UI", sans-serif',
+            'fontScale' => 1.0,
+            'panelRadiusPx' => 28,
+            'glassBlurPx' => 26,
         ],
         'telemetry' => [
             'upstreamUrl' => 'http://127.0.0.1:31377/api/ets2/telemetry',
@@ -140,6 +144,24 @@ function dashboard_env_string(string $name, string $default): string
     return $trimmed === '' ? $default : $trimmed;
 }
 
+function dashboard_clamp_int(mixed $value, int $default, int $min, int $max): int
+{
+    if (!is_int($value) && !is_float($value) && !(is_string($value) && trim($value) !== '' && is_numeric($value))) {
+        return $default;
+    }
+
+    return max($min, min($max, (int) $value));
+}
+
+function dashboard_clamp_float(mixed $value, float $default, float $min, float $max): float
+{
+    if (!is_int($value) && !is_float($value) && !(is_string($value) && trim($value) !== '' && is_numeric($value))) {
+        return $default;
+    }
+
+    return max($min, min($max, (float) $value));
+}
+
 function dashboard_sanitize_hex_color(string $value, string $default): string
 {
     $normalized = strtoupper(trim($value));
@@ -149,6 +171,40 @@ function dashboard_sanitize_hex_color(string $value, string $default): string
     }
 
     return strtoupper($default);
+}
+
+function dashboard_sanitize_font_family(string $value, string $default): string
+{
+    $normalized = preg_replace('/[^A-Za-z0-9\s,"\'.-]+/', '', trim($value));
+    $normalized = is_string($normalized) ? preg_replace('/\s+/', ' ', $normalized) : null;
+    $normalized = is_string($normalized) ? trim($normalized) : '';
+
+    return $normalized !== '' ? $normalized : $default;
+}
+
+function dashboard_design_theme_variables(array $design): array
+{
+    $defaultFontFamily = '"Space Grotesk", "Aptos", "Segoe UI", sans-serif';
+    $fontScale = dashboard_clamp_float($design['fontScale'] ?? 1.0, 1.0, 0.85, 1.4);
+    $panelRadiusPx = dashboard_clamp_int($design['panelRadiusPx'] ?? 28, 28, 16, 40);
+    $glassBlurPx = dashboard_clamp_int($design['glassBlurPx'] ?? 26, 26, 0, 40);
+
+    return [
+        '--teal' => dashboard_sanitize_hex_color((string) ($design['accentColor'] ?? '#54EFC7'), '#54EFC7'),
+        '--blue' => dashboard_sanitize_hex_color((string) ($design['accentSecondaryColor'] ?? '#79C7FF'), '#79C7FF'),
+        '--amber' => dashboard_sanitize_hex_color((string) ($design['accentWarmColor'] ?? '#FFBF69'), '#FFBF69'),
+        '--good' => dashboard_sanitize_hex_color((string) ($design['successColor'] ?? '#43D79F'), '#43D79F'),
+        '--bad' => dashboard_sanitize_hex_color((string) ($design['dangerColor'] ?? '#FF7050'), '#FF7050'),
+        '--red' => dashboard_sanitize_hex_color((string) ($design['dangerColor'] ?? '#FF7050'), '#FF7050'),
+        '--ring-color-off' => dashboard_sanitize_hex_color((string) ($design['dangerColor'] ?? '#FF7050'), '#FF7050'),
+        '--ui-font-family' => dashboard_sanitize_font_family((string) ($design['fontFamily'] ?? $defaultFontFamily), $defaultFontFamily),
+        '--ui-font-scale' => rtrim(rtrim(number_format($fontScale, 2, '.', ''), '0'), '.'),
+        '--panel-radius-sm' => (string) max(10, $panelRadiusPx - 10) . 'px',
+        '--panel-radius-md' => (string) max(14, $panelRadiusPx - 4) . 'px',
+        '--panel-radius-base' => (string) $panelRadiusPx . 'px',
+        '--panel-radius-lg' => (string) min(44, $panelRadiusPx + 4) . 'px',
+        '--glass-blur-strength' => (string) $glassBlurPx . 'px',
+    ];
 }
 
 function dashboard_config(): array
@@ -188,6 +244,28 @@ function dashboard_config(): array
     $config['design']['dangerColor'] = dashboard_sanitize_hex_color(
         (string) ($config['design']['dangerColor'] ?? '#FF7050'),
         '#FF7050'
+    );
+    $config['design']['fontFamily'] = dashboard_sanitize_font_family(
+        (string) ($config['design']['fontFamily'] ?? '"Space Grotesk", "Aptos", "Segoe UI", sans-serif'),
+        '"Space Grotesk", "Aptos", "Segoe UI", sans-serif'
+    );
+    $config['design']['fontScale'] = dashboard_clamp_float(
+        $config['design']['fontScale'] ?? 1.0,
+        1.0,
+        0.85,
+        1.4
+    );
+    $config['design']['panelRadiusPx'] = dashboard_clamp_int(
+        $config['design']['panelRadiusPx'] ?? 28,
+        28,
+        16,
+        40
+    );
+    $config['design']['glassBlurPx'] = dashboard_clamp_int(
+        $config['design']['glassBlurPx'] ?? 26,
+        26,
+        0,
+        40
     );
 
     $config['telemetry']['upstreamUrl'] = dashboard_env_string(

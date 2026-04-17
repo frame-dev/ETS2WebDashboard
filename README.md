@@ -28,7 +28,7 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) also rou
 - Telemetry backend with upstream fetch control, timeout handling, JSON output for polling, local cache fallback, and cache TTL control
 - Integrated snapshot pipeline with timed capture, saved runtime state, duplicate snapshot avoidance, and optional pretty-printed output
 - Browser-based settings workspace with tabs for `General`, `Telemetry`, `Frontend`, `Maps`, `Snapshots`, and `Transfer`
-- Settings controls for app copy, theme colors, telemetry behavior, route planner tuning, speed ring tuning, polling behavior, storage keys, map bounds, and tile sources
+- Settings controls for app copy, theme colors, typography, panel styling, telemetry behavior, route planner tuning, speed ring tuning, polling behavior, storage keys, map bounds, and tile sources
 - Config transfer features including JSON import, JSON export, PHP export, and a generated managed config preview
 - Managed settings writes back to `config.local.php` while preserving unrelated local config values
 - Config system with defaults in `config.php`, local overrides in `config.local.php`, environment-variable overrides, and theme color sanitization
@@ -139,6 +139,10 @@ return [
         'accentWarmColor' => '#FFBF69',
         'successColor' => '#43D79F',
         'dangerColor' => '#FF7050',
+        'fontFamily' => '"Space Grotesk", "Aptos", "Segoe UI", sans-serif',
+        'fontScale' => 1.0,
+        'panelRadiusPx' => 28,
+        'glassBlurPx' => 26,
     ],
     'telemetry' => [
         'upstreamUrl' => 'http://127.0.0.1:31377/api/ets2/telemetry',

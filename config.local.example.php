@@ -13,6 +13,10 @@ return [
         'accentWarmColor' => '#FFBF69',
         'successColor' => '#43D79F',
         'dangerColor' => '#FF7050',
+        'fontFamily' => '"Space Grotesk", "Aptos", "Segoe UI", sans-serif',
+        'fontScale' => 1.0,
+        'panelRadiusPx' => 28,
+        'glassBlurPx' => 26,
     ],
     'telemetry' => [
         'upstreamUrl' => 'http://127.0.0.1:31377/api/ets2/telemetry',

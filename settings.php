@@ -143,15 +143,7 @@ function settings_normalize_color(mixed $value, string $fallback): string
 
 function settings_build_theme_style(array $design): string
 {
-    $variables = [
-        '--teal' => settings_normalize_color($design['accentColor'] ?? '#54EFC7', '#54EFC7'),
-        '--blue' => settings_normalize_color($design['accentSecondaryColor'] ?? '#79C7FF', '#79C7FF'),
-        '--amber' => settings_normalize_color($design['accentWarmColor'] ?? '#FFBF69', '#FFBF69'),
-        '--good' => settings_normalize_color($design['successColor'] ?? '#43D79F', '#43D79F'),
-        '--bad' => settings_normalize_color($design['dangerColor'] ?? '#FF7050', '#FF7050'),
-        '--red' => settings_normalize_color($design['dangerColor'] ?? '#FF7050', '#FF7050'),
-        '--ring-color-off' => settings_normalize_color($design['dangerColor'] ?? '#FF7050', '#FF7050'),
-    ];
+    $variables = dashboard_design_theme_variables($design);
 
     $declarations = [];
     foreach ($variables as $name => $value) {
@@ -246,6 +238,10 @@ function settings_import_json_to_form_data(array $currentFormData, array $import
     $currentFormData['design']['accentWarmColor'] = settings_normalize_color($importedConfig['design']['accentWarmColor'] ?? $currentFormData['design']['accentWarmColor'], $currentFormData['design']['accentWarmColor']);
     $currentFormData['design']['successColor'] = settings_normalize_color($importedConfig['design']['successColor'] ?? $currentFormData['design']['successColor'], $currentFormData['design']['successColor']);
     $currentFormData['design']['dangerColor'] = settings_normalize_color($importedConfig['design']['dangerColor'] ?? $currentFormData['design']['dangerColor'], $currentFormData['design']['dangerColor']);
+    $currentFormData['design']['fontFamily'] = dashboard_sanitize_font_family((string) ($importedConfig['design']['fontFamily'] ?? $currentFormData['design']['fontFamily']), $currentFormData['design']['fontFamily']);
+    $currentFormData['design']['fontScale'] = dashboard_clamp_float($importedConfig['design']['fontScale'] ?? $currentFormData['design']['fontScale'], $currentFormData['design']['fontScale'], 0.85, 1.4);
+    $currentFormData['design']['panelRadiusPx'] = dashboard_clamp_int($importedConfig['design']['panelRadiusPx'] ?? $currentFormData['design']['panelRadiusPx'], $currentFormData['design']['panelRadiusPx'], 16, 40);
+    $currentFormData['design']['glassBlurPx'] = dashboard_clamp_int($importedConfig['design']['glassBlurPx'] ?? $currentFormData['design']['glassBlurPx'], $currentFormData['design']['glassBlurPx'], 0, 40);
 
     $currentFormData['telemetry']['upstreamUrl'] = trim((string) ($importedConfig['telemetry']['upstreamUrl'] ?? $currentFormData['telemetry']['upstreamUrl']));
     $currentFormData['telemetry']['refreshIntervalMs'] = max(100, settings_int_value($importedConfig['telemetry']['refreshIntervalMs'] ?? null, $currentFormData['telemetry']['refreshIntervalMs']));
@@ -309,6 +305,10 @@ $designConfig = [
     'accentWarmColor' => (string) dashboard_config_value('design.accentWarmColor', '#FFBF69'),
     'successColor' => (string) dashboard_config_value('design.successColor', '#43D79F'),
     'dangerColor' => (string) dashboard_config_value('design.dangerColor', '#FF7050'),
+    'fontFamily' => (string) dashboard_config_value('design.fontFamily', '"Space Grotesk", "Aptos", "Segoe UI", sans-serif'),
+    'fontScale' => (float) dashboard_config_value('design.fontScale', 1.0),
+    'panelRadiusPx' => (int) dashboard_config_value('design.panelRadiusPx', 28),
+    'glassBlurPx' => (int) dashboard_config_value('design.glassBlurPx', 26),
 ];
 $telemetryConfig = [
     'upstreamUrl' => (string) dashboard_config_value('telemetry.upstreamUrl', 'http://127.0.0.1:31377/api/ets2/telemetry'),
@@ -481,6 +481,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'accentWarmColor' => settings_normalize_color($_POST['design_accent_warm_color'] ?? $designConfig['accentWarmColor'], $designConfig['accentWarmColor']),
                 'successColor' => settings_normalize_color($_POST['design_success_color'] ?? $designConfig['successColor'], $designConfig['successColor']),
                 'dangerColor' => settings_normalize_color($_POST['design_danger_color'] ?? $designConfig['dangerColor'], $designConfig['dangerColor']),
+                'fontFamily' => dashboard_sanitize_font_family((string) ($_POST['design_font_family'] ?? $designConfig['fontFamily']), $designConfig['fontFamily']),
+                'fontScale' => dashboard_clamp_float($_POST['design_font_scale'] ?? $designConfig['fontScale'], $designConfig['fontScale'], 0.85, 1.4),
+                'panelRadiusPx' => dashboard_clamp_int($_POST['design_panel_radius_px'] ?? $designConfig['panelRadiusPx'], $designConfig['panelRadiusPx'], 16, 40),
+                'glassBlurPx' => dashboard_clamp_int($_POST['design_glass_blur_px'] ?? $designConfig['glassBlurPx'], $designConfig['glassBlurPx'], 0, 40),
             ],
             'telemetry' => [
                 'upstreamUrl' => trim((string) ($_POST['telemetry_upstream_url'] ?? $telemetryConfig['upstreamUrl'])),
@@ -796,6 +800,34 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                     <span class="color-code"><?php echo htmlspecialchars($formData['design']['dangerColor'], ENT_QUOTES, 'UTF-8'); ?></span>
                                 </div>
                                 <span class="hint">Used for disconnect, warning, and alert-oriented states.</span>
+                            </div>
+                        </div>
+                        <div class="head visual-tuning-head">
+                            <div>
+                                <p class="eyebrow">Style</p>
+                                <h2>Visual Controls</h2>
+                            </div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="field full">
+                                <label for="design-font-family">UI font stack</label>
+                                <input id="design-font-family" name="design_font_family" type="text" value="<?php echo htmlspecialchars($formData['design']['fontFamily'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">CSS font-family stack used by the dashboard and settings page, for example <code>&quot;Space Grotesk&quot;, &quot;Segoe UI&quot;, sans-serif</code>.</span>
+                            </div>
+                            <div class="field">
+                                <label for="design-font-scale">Font scale</label>
+                                <input id="design-font-scale" name="design_font_scale" type="number" min="0.85" max="1.4" step="0.05" value="<?php echo htmlspecialchars((string) $formData['design']['fontScale'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Scales the overall interface typography up or down without editing CSS.</span>
+                            </div>
+                            <div class="field">
+                                <label for="design-panel-radius-px">Panel roundness</label>
+                                <input id="design-panel-radius-px" name="design_panel_radius_px" type="number" min="16" max="40" step="1" value="<?php echo htmlspecialchars((string) $formData['design']['panelRadiusPx'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Controls the corner radius used by the main dashboard and settings panels.</span>
+                            </div>
+                            <div class="field full">
+                                <label for="design-glass-blur-px">Glass blur strength</label>
+                                <input id="design-glass-blur-px" name="design_glass_blur_px" type="number" min="0" max="40" step="1" value="<?php echo htmlspecialchars((string) $formData['design']['glassBlurPx'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Adjusts the backdrop blur used by the glass-style surfaces. Lower values look crisper; higher values look softer.</span>
                             </div>
                         </div>
                     </section>

@@ -16,7 +16,14 @@
     --good: #43d79f;
     --bad: #ff7a66;
     --shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
-    font-family: "Space Grotesk", "Segoe UI", sans-serif;
+    --ui-font-family: "Space Grotesk", "Segoe UI", sans-serif;
+    --ui-font-scale: 1;
+    --panel-radius-sm: 18px;
+    --panel-radius-md: 22px;
+    --panel-radius-base: 26px;
+    --panel-radius-lg: 30px;
+    --glass-blur-strength: 18px;
+    font-family: var(--ui-font-family);
 }
 
 * {
@@ -26,6 +33,7 @@
 body {
     margin: 0;
     color: var(--text);
+    font-size: calc(16px * var(--ui-font-scale));
     background:
         radial-gradient(circle at top left, rgba(121, 199, 255, 0.12), transparent 28rem),
         radial-gradient(circle at top right, rgba(255, 191, 105, 0.08), transparent 24rem),
@@ -66,14 +74,14 @@ main {
         radial-gradient(circle at bottom right, rgba(84, 239, 199, 0.08), transparent 30%),
         var(--panel-glass),
         var(--panel);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(var(--glass-blur-strength));
+    -webkit-backdrop-filter: blur(var(--glass-blur-strength));
     box-shadow: var(--shadow);
     min-width: 0;
 }
 
 .hero {
-    border-radius: 28px;
+    border-radius: var(--panel-radius-lg);
     padding: 24px;
     display: grid;
     grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
@@ -191,7 +199,7 @@ p {
 }
 
 .stat {
-    border-radius: 20px;
+    border-radius: var(--panel-radius-md);
     padding: 16px;
     display: grid;
     gap: 8px;
@@ -226,7 +234,7 @@ p {
 
 .panel {
     position: relative;
-    border-radius: 26px;
+    border-radius: var(--panel-radius-base);
     padding: 22px;
     box-shadow:
         0 24px 56px rgba(0, 0, 0, 0.3),
@@ -248,6 +256,10 @@ p {
     font-size: 1.36rem;
 }
 
+.visual-tuning-head {
+    margin-top: 22px;
+}
+
 .sub {
     color: var(--muted);
     line-height: 1.5;
@@ -257,7 +269,7 @@ p {
 .flash {
     margin: 18px 0;
     padding: 14px 16px;
-    border-radius: 18px;
+    border-radius: var(--panel-radius-sm);
     border: 1px solid rgba(150, 205, 240, 0.14);
     background: rgba(255, 255, 255, 0.04);
 }
@@ -275,7 +287,7 @@ p {
 .inline-feedback {
     margin-top: 14px;
     padding: 12px 14px;
-    border-radius: 16px;
+    border-radius: var(--panel-radius-sm);
     border: 1px solid rgba(150, 205, 240, 0.14);
     background: rgba(255, 255, 255, 0.04);
     color: var(--text);
@@ -328,7 +340,7 @@ textarea {
     width: 100%;
     min-height: 48px;
     padding: 12px 14px;
-    border-radius: 16px;
+    border-radius: var(--panel-radius-sm);
     border: 1px solid rgba(150, 205, 240, 0.18);
     background: rgba(2, 8, 14, 0.5);
     color: var(--strong);
@@ -347,7 +359,7 @@ textarea::placeholder {
 .toggle-card {
     min-height: 120px;
     padding: 16px;
-    border-radius: 20px;
+    border-radius: var(--panel-radius-md);
     border: 1px solid rgba(150, 205, 240, 0.12);
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
