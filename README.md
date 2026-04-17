@@ -269,6 +269,15 @@ There is also a standalone `snapshot.js` script in the repository, but the main 
 - `tmp/`: cache and runtime state files
 - `snapshots/`: saved telemetry snapshots
 
+## Feature Roadmap
+
+- Make tiles server publicly available and test tile proxying with real external sources
+- Add more telemetry details to the info workspace, such as trailer states, control inputs, and event logs
+- Add more settings controls for frontend behavior, such as map preferences and dashboard tuning
+- Implement a more robust snapshot management UI and workflow
+- Add error handling and user feedback for telemetry fetch failures, invalid config imports, and tile proxy errors
+- Explore additional dashboard widgets or visualizations based on telemetry data, such as fuel consumption graphs, engine load indicators, or route progress bars
+
 ## Notes
 
 - `router.php` makes the project root load `indexV2.php`, so the V2 dashboard is the default landing page.
