@@ -39,6 +39,10 @@ return [
     ],
     'frontend' => [
         'telemetryEndpoint' => 'telemetry.php?format=json',
+        'remoteTelemetryUrls' => [],
+        'playersRefreshMs' => 3000,
+        'playersRadiusDefault' => 5500,
+        'playersServerDefault' => 50,
         'telemetryPolling' => [
             'backoffStepMs' => 1000,
             'maxBackoffMs' => 30000,

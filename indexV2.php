@@ -64,6 +64,10 @@ $dashboard_config = [
     'tileProxyEndpoint' => 'tile-proxy.php',
     'refreshIntervalMs' => $refresh_interval_ms,
     'telemetryRequestTimeoutMs' => (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500),
+    'remoteTelemetryUrls' => is_array($frontend_config['remoteTelemetryUrls'] ?? null) ? $frontend_config['remoteTelemetryUrls'] : [],
+    'playersRefreshMs' => (int) (($frontend_config['playersRefreshMs'] ?? null) ?? (($frontend_config['players']['refreshMs'] ?? null) ?? 3000)),
+    'playersRadiusDefault' => (int) (($frontend_config['playersRadiusDefault'] ?? null) ?? (($frontend_config['players']['radiusDefault'] ?? null) ?? 5500)),
+    'playersServerDefault' => (int) (($frontend_config['playersServerDefault'] ?? null) ?? (($frontend_config['players']['serverDefault'] ?? null) ?? 50)),
     'telemetryPolling' => is_array($frontend_config['telemetryPolling'] ?? null) ? $frontend_config['telemetryPolling'] : [],
     'speedRing' => is_array($frontend_config['speedRing'] ?? null) ? $frontend_config['speedRing'] : [],
     'storageKeys' => is_array($frontend_config['storageKeys'] ?? null) ? $frontend_config['storageKeys'] : [],
@@ -90,7 +94,9 @@ $json_flags = JSON_UNESCAPED_SLASHES
     <meta name="description" content="<?php echo htmlspecialchars($app_description, ENT_QUOTES, 'UTF-8'); ?>">
     <title><?php echo htmlspecialchars($app_title, ENT_QUOTES, 'UTF-8'); ?></title>
     <link rel="stylesheet" href="indexV2.css">
-    <style><?php echo $dashboard_theme_css; ?></style>
+    <style>
+        <?php echo $dashboard_theme_css; ?>
+    </style>
 </head>
 
 <body>
@@ -115,11 +121,13 @@ $json_flags = JSON_UNESCAPED_SLASHES
                     <strong id="refresh-interval"><?php echo $refresh_interval_ms; ?> ms</strong>
                 </div>
             </div>
+            <button class="toolbar-toggle-button" type="button" id="truckersmp-toggle" aria-pressed="true" aria-label="Toggle TruckersMP player markers">
+                TruckersMP
+            </button>
             <a href="settings.php" class="settings-link" aria-label="Dashboard settings and configuration">
                 <span class="settings-link-icon" aria-hidden="true">O</span>
                 <span class="settings-link-copy">
                     <span class="settings-link-label">Settings</span>
-                    <span class="settings-link-meta">Theme, telemetry, snapshots</span>
                 </span>
             </a>
         </div>

@@ -92,6 +92,10 @@ const elements = {
     heroTitle: document.getElementById("hero-title"),
     heroSummary: document.getElementById("hero-summary"),
     dashboardNotices: document.getElementById("dashboard-notices"),
+    truckersMpToggle: document.getElementById("truckersmp-toggle"),
+    konvoyServerForm: document.getElementById("konvoy-server-form"),
+    konvoyServerUrls: document.getElementById("konvoy-server-urls"),
+    konvoyServerStatus: document.getElementById("konvoy-server-url-status"),
     heroTags: document.getElementById("hero-tags"),
     heroSpeedValue: document.getElementById("hero-speed-value"),
     speedPeak: document.getElementById("speed-peak"),
@@ -203,9 +207,14 @@ let telemetryLastSourceType = "upstream";
 let playersFetchTimer = null;
 let playersFetchInFlight = false;
 let playersData = [];
-const playersRefreshMs = 3000;
-const playersRadiusDefault = 5500;
-const playersServerDefault = 50;
+let remoteTelemetryPlayers = [];
+let playersOverlayEnabled = true;
+let remoteTelemetryUrls = Array.isArray(config.remoteTelemetryUrls)
+    ? normalizeRemoteTelemetryUrls(config.remoteTelemetryUrls.join(", "))
+    : [];
+const playersRefreshMs = Math.max(250, Number(config.playersRefreshMs) || 3000);
+const playersRadiusDefault = Math.max(1, Number(config.playersRadiusDefault) || 5500);
+const playersServerDefault = Math.max(1, Math.floor(Number(config.playersServerDefault) || 50));
 let speedRingPeakKph = 0;
 let speedRingPreviousKph = null;
 let previousJobFinishedState = false;
@@ -714,6 +723,7 @@ function persistMapPreferences() {
             worldFollowTruck: tileMapState.followTruck,
             heroZoom: heroMapState.zoom,
             heroFollowTruck: heroMapState.followTruck,
+            playersOverlayEnabled,
         }));
     } catch (error) {
         // Ignore storage failures to keep runtime behavior stable.
@@ -747,8 +757,204 @@ function loadMapPreferences() {
         if (typeof parsed?.heroFollowTruck === "boolean") {
             heroMapState.followTruck = parsed.heroFollowTruck;
         }
+
+        if (typeof parsed?.playersOverlayEnabled === "boolean") {
+            playersOverlayEnabled = parsed.playersOverlayEnabled;
+        }
     } catch (error) {
         // Ignore malformed data and fall back to defaults.
+    }
+}
+
+function clearPlayerMarkers() {
+    if (elements.ets2MapPlayers) {
+        elements.ets2MapPlayers.innerHTML = "";
+    }
+
+    if (elements.heroMapPlayers) {
+        elements.heroMapPlayers.innerHTML = "";
+    }
+}
+
+function updateTruckersMpToggle() {
+    if (!(elements.truckersMpToggle instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const label = playersOverlayEnabled
+        ? `TruckersMP ${playersData.length > 0 ? playersData.length : "On"}`
+        : "TruckersMP Off";
+    elements.truckersMpToggle.textContent = label;
+    elements.truckersMpToggle.dataset.state = playersOverlayEnabled ? "active" : "inactive";
+    elements.truckersMpToggle.setAttribute("aria-pressed", playersOverlayEnabled ? "true" : "false");
+    elements.truckersMpToggle.setAttribute(
+        "aria-label",
+        playersOverlayEnabled
+            ? "Disable TruckersMP player markers"
+            : "Enable TruckersMP player markers"
+    );
+    elements.truckersMpToggle.title = playersOverlayEnabled
+        ? "Hide other TruckersMP players"
+        : "Show other TruckersMP players";
+}
+
+function normalizeRemoteTelemetryUrls(value) {
+    if (typeof value !== "string") {
+        return [];
+    }
+
+    const urls = [];
+    const seen = new Set();
+
+    for (const part of value.split(/[\r\n,]+/)) {
+        const candidate = part.trim();
+        if (candidate === "") {
+            continue;
+        }
+
+        try {
+            const parsed = new URL(candidate);
+            if (!["http:", "https:"].includes(parsed.protocol)) {
+                continue;
+            }
+
+            const normalized = parsed.toString();
+            if (seen.has(normalized)) {
+                continue;
+            }
+
+            seen.add(normalized);
+            urls.push(normalized);
+        } catch {
+            // Ignore invalid URLs and keep any valid ones.
+        }
+    }
+
+    return urls.slice(0, 12);
+}
+
+function getDisplayedPlayers() {
+    return [
+        ...(playersOverlayEnabled ? playersData : []),
+        ...remoteTelemetryPlayers,
+    ];
+}
+
+function syncRemoteTelemetryInput() {
+    if (elements.konvoyServerUrls instanceof HTMLInputElement) {
+        elements.konvoyServerUrls.value = remoteTelemetryUrls.join(", ");
+    }
+}
+
+function updateRemoteTelemetryStatus(message = "") {
+    if (elements.konvoyServerStatus) {
+        if (message !== "") {
+            elements.konvoyServerStatus.textContent = message;
+            return;
+        }
+
+        elements.konvoyServerStatus.textContent = remoteTelemetryUrls.length > 0
+            ? `Direct telemetry sources active: ${remoteTelemetryUrls.length}.`
+            : "No direct telemetry URLs configured.";
+    }
+}
+
+async function fetchRemoteTelemetryPlayers() {
+    if (remoteTelemetryUrls.length === 0) {
+        remoteTelemetryPlayers = [];
+        updateRemoteTelemetryStatus();
+        return;
+    }
+
+    try {
+        const query = encodeURIComponent(remoteTelemetryUrls.join(","));
+        const response = await fetch(`telemetry.php?format=remotePlayers&urls=${query}`, {
+            cache: "no-store",
+        });
+
+        if (!response.ok) {
+            remoteTelemetryPlayers = [];
+            updateRemoteTelemetryStatus("Direct telemetry sources could not be reached.");
+            return;
+        }
+
+        const json = await response.json();
+        remoteTelemetryPlayers = Array.isArray(json.Data) ? json.Data : [];
+
+        const errorCount = Array.isArray(json.Errors) ? json.Errors.length : 0;
+        if (errorCount > 0) {
+            updateRemoteTelemetryStatus(`Loaded ${remoteTelemetryPlayers.length} direct players, ${errorCount} source${errorCount === 1 ? "" : "s"} failed.`);
+        } else {
+            updateRemoteTelemetryStatus(`Loaded ${remoteTelemetryPlayers.length} direct player${remoteTelemetryPlayers.length === 1 ? "" : "s"}.`);
+        }
+    } catch {
+        remoteTelemetryPlayers = [];
+        updateRemoteTelemetryStatus("Direct telemetry sources could not be reached.");
+    }
+}
+
+async function setRemoteTelemetryUrls(urls, persist = true) {
+    remoteTelemetryUrls = Array.isArray(urls) ? urls : [];
+    syncRemoteTelemetryInput();
+    updateRemoteTelemetryStatus(persist ? "Saving direct telemetry URLs..." : "");
+
+    if (persist) {
+        try {
+            const body = new URLSearchParams();
+            body.set("urls", remoteTelemetryUrls.join(", "));
+
+            const response = await fetch("telemetry.php?format=saveRemoteTelemetryUrls", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                },
+                body: body.toString(),
+            });
+
+            const json = await response.json().catch(() => null);
+            if (!response.ok || !json?.Success) {
+                updateRemoteTelemetryStatus(typeof json?.error === "string"
+                    ? json.error
+                    : "Could not save direct telemetry URLs.");
+                return;
+            }
+        } catch {
+            updateRemoteTelemetryStatus("Could not save direct telemetry URLs.");
+            return;
+        }
+    }
+
+    updateRemoteTelemetryStatus();
+}
+
+function stopPlayerPolling() {
+    if (playersFetchTimer !== null) {
+        window.clearInterval(playersFetchTimer);
+        playersFetchTimer = null;
+    }
+
+    playersFetchInFlight = false;
+}
+
+function setPlayersOverlayEnabled(enabled, persist = true) {
+    playersOverlayEnabled = Boolean(enabled);
+    updateTruckersMpToggle();
+
+    if (!playersOverlayEnabled) {
+        playersData = [];
+        if (remoteTelemetryUrls.length > 0) {
+            startPlayerPolling();
+        } else {
+            stopPlayerPolling();
+            renderPlayersOnMap();
+            renderPlayersOnHeroMap();
+        }
+    } else {
+        startPlayerPolling();
+    }
+
+    if (persist) {
+        persistMapPreferences();
     }
 }
 
@@ -922,6 +1128,87 @@ function getMapProjectionPoint(x, z) {
     return {
         pixelX: clamp01((x - ets2MapBounds.minX) / width),
         pixelY: clamp01((ets2MapBounds.maxZ - z) / height),
+    };
+}
+
+function buildFallbackProjectionBounds(centerX, centerZ, points = []) {
+    const configuredBounds = {
+        minX: ets2MapBounds.minX,
+        maxX: ets2MapBounds.maxX,
+        minZ: ets2MapBounds.minZ,
+        maxZ: ets2MapBounds.maxZ,
+    };
+    const validPoints = [];
+
+    if (getNumber(centerX) !== null && getNumber(centerZ) !== null) {
+        validPoints.push({ x: Number(centerX), z: Number(centerZ) });
+    }
+
+    for (const point of points) {
+        const px = getNumber(point?.x);
+        const pz = getNumber(point?.z);
+        if (px === null || pz === null) {
+            continue;
+        }
+
+        validPoints.push({ x: px, z: pz });
+    }
+
+    if (validPoints.length === 0) {
+        return configuredBounds;
+    }
+
+    const fitsConfiguredBounds = validPoints.every((point) => (
+        point.x >= configuredBounds.minX
+        && point.x <= configuredBounds.maxX
+        && point.z >= configuredBounds.minZ
+        && point.z <= configuredBounds.maxZ
+    ));
+
+    if (fitsConfiguredBounds) {
+        return configuredBounds;
+    }
+
+    let minX = validPoints[0].x;
+    let maxX = validPoints[0].x;
+    let minZ = validPoints[0].z;
+    let maxZ = validPoints[0].z;
+
+    for (const point of validPoints) {
+        minX = Math.min(minX, point.x);
+        maxX = Math.max(maxX, point.x);
+        minZ = Math.min(minZ, point.z);
+        maxZ = Math.max(maxZ, point.z);
+    }
+
+    const padding = Math.max(playersRadiusDefault * 0.35, 2500);
+    const paddedMinX = minX - padding;
+    const paddedMaxX = maxX + padding;
+    const paddedMinZ = minZ - padding;
+    const paddedMaxZ = maxZ + padding;
+
+    return {
+        minX: paddedMinX,
+        maxX: paddedMaxX > paddedMinX ? paddedMaxX : paddedMinX + 1,
+        minZ: paddedMinZ,
+        maxZ: paddedMaxZ > paddedMinZ ? paddedMaxZ : paddedMinZ + 1,
+    };
+}
+
+function projectPointWithinBounds(x, z, bounds) {
+    if (!bounds) {
+        return null;
+    }
+
+    const width = bounds.maxX - bounds.minX;
+    const height = bounds.maxZ - bounds.minZ;
+    if (!(width > 0) || !(height > 0)) {
+        return null;
+    }
+
+    return {
+        pixelX: clamp01((x - bounds.minX) / width),
+        pixelY: clamp01((bounds.maxZ - z) / height),
     };
 }
 
@@ -2452,48 +2739,58 @@ function renderWorld(data) {
 }
 
 async function fetchPlayersForMap() {
-    if (playersFetchInFlight || !latestTelemetryData) {
+    const telemetryData = getLatestRenderableTelemetryData();
+    if (playersFetchInFlight || !telemetryData) {
         return;
     }
 
-    const truck = latestTelemetryData.truck || {};
+    const truck = telemetryData.truck || {};
     const x = getNumber(truck.placement?.x);
     const z = getNumber(truck.placement?.z);
 
     if (x === null || z === null) {
         playersData = [];
+        await fetchRemoteTelemetryPlayers();
         renderPlayersOnMap();
+        renderPlayersOnHeroMap();
+        updateTruckersMpToggle();
         return;
     }
 
-    const radius = playersRadiusDefault;
-    const server = playersServerDefault;
-    const x1 = Math.round(x - radius);
-    const x2 = Math.round(x + radius);
-    const y1 = Math.round(z + radius);
-    const y2 = Math.round(z - radius);
+    if (playersOverlayEnabled) {
+        const radius = playersRadiusDefault;
+        const server = playersServerDefault;
+        const x1 = Math.round(x - radius);
+        const x2 = Math.round(x + radius);
+        const y1 = Math.round(z + radius);
+        const y2 = Math.round(z - radius);
 
-    const url = `telemetry.php?format=players&x1=${x1}&y1=${y1}&x2=${x2}&y2=${y2}&server=${server}`;
+        const url = `telemetry.php?format=players&x1=${x1}&y1=${y1}&x2=${x2}&y2=${y2}&server=${server}`;
 
-    playersFetchInFlight = true;
-    try {
-        const response = await fetch(url, { cache: "no-store" });
-        if (!response.ok) {
+        playersFetchInFlight = true;
+        try {
+            const response = await fetch(url, { cache: "no-store" });
+            if (!response.ok) {
+                playersData = [];
+            } else {
+                const json = await response.json();
+                if (json.Success && Array.isArray(json.Data)) {
+                    playersData = json.Data;
+                } else {
+                    playersData = [];
+                }
+            }
+        } catch {
             playersData = [];
-            return;
+        } finally {
+            playersFetchInFlight = false;
         }
-        const json = await response.json();
-        if (json.Success && Array.isArray(json.Data)) {
-            playersData = json.Data;
-        } else {
-            playersData = [];
-        }
-    } catch {
+    } else {
         playersData = [];
-    } finally {
-        playersFetchInFlight = false;
     }
 
+    await fetchRemoteTelemetryPlayers();
+    updateTruckersMpToggle();
     renderPlayersOnMap();
     renderPlayersOnHeroMap();
 }
@@ -2516,14 +2813,14 @@ function renderPlayersOnMap() {
 
     const usedMpIds = new Set();
 
-    for (const player of playersData) {
+    for (const player of getDisplayedPlayers()) {
         const px = getNumber(player.X);
         const pz = getNumber(player.Y);
         if (px === null || pz === null) {
             continue;
         }
 
-        const mapPixels = gameCoordsToTilePixels(px, pz, tileMapState.config);
+        const mapPixels = getMapProjectionPoint(px, pz);
         if (!mapPixels) {
             continue;
         }
@@ -2557,12 +2854,14 @@ function renderPlayersOnMap() {
 }
 
 function renderPlayersOnHeroMap() {
-    if (!elements.heroMapPlayers || !tileMapState.initialized || !tileMapState.config || !heroMapState.lastView) {
+    if (!elements.heroMapPlayers) {
         return;
     }
 
-    const view = heroMapState.lastView;
     const container = elements.heroMapPlayers;
+    const stage = elements.heroMapStage;
+    const fallbackWidth = stage?.clientWidth || container.clientWidth || 0;
+    const fallbackHeight = stage?.clientHeight || container.clientHeight || 0;
     const existingByMpId = new Map();
 
     for (const node of Array.from(container.children)) {
@@ -2573,21 +2872,49 @@ function renderPlayersOnHeroMap() {
     }
 
     const usedMpIds = new Set();
+    const telemetryData = getLatestRenderableTelemetryData();
+    const truck = telemetryData?.truck || {};
+    const truckX = getNumber(truck.placement?.x);
+    const truckZ = getNumber(truck.placement?.z);
+    const allPlayers = getDisplayedPlayers();
+    const fallbackBounds = buildFallbackProjectionBounds(
+        truckX,
+        truckZ,
+        allPlayers.map((player) => ({ x: player?.X, z: player?.Y }))
+    );
 
-    for (const player of playersData) {
+    for (const player of allPlayers) {
         const px = getNumber(player.X);
         const pz = getNumber(player.Y);
         if (px === null || pz === null) {
             continue;
         }
 
-        const mapPixels = gameCoordsToTilePixels(px, pz, tileMapState.config);
-        if (!mapPixels) {
-            continue;
-        }
+        let screenX;
+        let screenY;
 
-        const screenX = (mapPixels.pixelX - view.viewLeft) / view.resolution;
-        const screenY = (mapPixels.pixelY - view.viewTop) / view.resolution;
+        if (tileMapState.initialized && tileMapState.config && heroMapState.lastView) {
+            const mapPixels = gameCoordsToTilePixels(px, pz, tileMapState.config);
+            if (!mapPixels) {
+                continue;
+            }
+
+            const view = heroMapState.lastView;
+            screenX = (mapPixels.pixelX - view.viewLeft) / view.resolution;
+            screenY = (mapPixels.pixelY - view.viewTop) / view.resolution;
+        } else {
+            if (fallbackWidth <= 0 || fallbackHeight <= 0) {
+                continue;
+            }
+
+            const projected = projectPointWithinBounds(px, pz, fallbackBounds);
+            if (!projected) {
+                continue;
+            }
+
+            screenX = projected.pixelX * fallbackWidth;
+            screenY = projected.pixelY * fallbackHeight;
+        }
 
         const mpId = String(player.MpId || player.PlayerId || `${px}_${pz}`);
         usedMpIds.add(mpId);
@@ -2615,6 +2942,15 @@ function renderPlayersOnHeroMap() {
 }
 
 function startPlayerPolling() {
+    if (!playersOverlayEnabled && remoteTelemetryUrls.length === 0) {
+        stopPlayerPolling();
+        return;
+    }
+
+    if (playersFetchTimer !== null) {
+        window.clearInterval(playersFetchTimer);
+    }
+
     fetchPlayersForMap();
     playersFetchTimer = window.setInterval(fetchPlayersForMap, playersRefreshMs);
 }
@@ -2702,8 +3038,15 @@ function renderMap(data) {
         return;
     }
 
-    const xRatio = clamp01((x - ets2MapBounds.minX) / (ets2MapBounds.maxX - ets2MapBounds.minX));
-    const zRatio = clamp01((ets2MapBounds.maxZ - z) / (ets2MapBounds.maxZ - ets2MapBounds.minZ));
+    const allPlayers = getDisplayedPlayers();
+    const fallbackBounds = buildFallbackProjectionBounds(
+        x,
+        z,
+        allPlayers.map((player) => ({ x: player?.X, z: player?.Y }))
+    );
+    const fallbackProjectedPoint = projectPointWithinBounds(x, z, fallbackBounds);
+    const xRatio = fallbackProjectedPoint?.pixelX ?? 0.5;
+    const zRatio = fallbackProjectedPoint?.pixelY ?? 0.5;
     const markerHeadingDeg = getMarkerHeadingDegrees(heading, x, z);
     const labelParts = [truck.licensePlate || "Truck"];
 
@@ -3035,6 +3378,29 @@ if (elements.heroMapCenter) {
     });
 }
 
+if (elements.truckersMpToggle) {
+    bindMapControlPress(elements.truckersMpToggle, () => {
+        setPlayersOverlayEnabled(!playersOverlayEnabled);
+    });
+}
+
+if (elements.konvoyServerForm) {
+    elements.konvoyServerForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const urls = normalizeRemoteTelemetryUrls(elements.konvoyServerUrls?.value || "");
+        await setRemoteTelemetryUrls(urls);
+        if (playersOverlayEnabled) {
+            await fetchPlayersForMap();
+        } else if (remoteTelemetryUrls.length > 0) {
+            startPlayerPolling();
+        } else {
+            remoteTelemetryPlayers = [];
+            renderPlayersOnMap();
+            renderPlayersOnHeroMap();
+        }
+    });
+}
+
 window.addEventListener("keydown", handleGlobalMapShortcuts);
 
 window.addEventListener("beforeunload", () => {
@@ -3089,6 +3455,9 @@ try {
 }
 
 loadMapPreferences();
+updateTruckersMpToggle();
+syncRemoteTelemetryInput();
+updateRemoteTelemetryStatus();
 loadCityLocalizations();
 
 startTelemetryPolling();

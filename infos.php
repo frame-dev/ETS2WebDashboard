@@ -1,15 +1,89 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/telemetry.php';
+
+$app_config = dashboard_config();
+$app_title = (string) dashboard_config_value('app.pageTitle', 'ETS2 Command Dashboard');
+$app_description = (string) dashboard_config_value('app.metaDescription', 'Live ETS2 dashboard for telemetry, route status, systems, and map tracking.');
+$design_config = [
+    'accentColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.accentColor', '#54EFC7'), '#54EFC7'),
+    'accentSecondaryColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.accentSecondaryColor', '#79C7FF'), '#79C7FF'),
+    'accentWarmColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.accentWarmColor', '#FFBF69'), '#FFBF69'),
+    'successColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.successColor', '#43D79F'), '#43D79F'),
+    'dangerColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.dangerColor', '#FF7050'), '#FF7050'),
+    'fontFamily' => dashboard_sanitize_font_family((string) dashboard_config_value('design.fontFamily', '"Space Grotesk", "Aptos", "Segoe UI", sans-serif'), '"Space Grotesk", "Aptos", "Segoe UI", sans-serif'),
+    'fontScale' => (float) dashboard_config_value('design.fontScale', 1.0),
+    'panelRadiusPx' => (int) dashboard_config_value('design.panelRadiusPx', 28),
+    'glassBlurPx' => (int) dashboard_config_value('design.glassBlurPx', 26),
+];
+$dashboard_theme_css_variables = dashboard_design_theme_variables($design_config);
+$dashboard_theme_declarations = [];
+foreach ($dashboard_theme_css_variables as $name => $value) {
+    $dashboard_theme_declarations[] = $name . ':' . $value;
+}
+$dashboard_theme_css = ':root{' . implode(';', $dashboard_theme_declarations) . ';}';
+
+$refresh_interval_ms = (int) get_telemetry_refresh_interval_ms();
+$telemetry_source = null;
+$json_data = fetch_telemetry_data(TELEMETRY_URL, $telemetry_source);
+$frontend_config = is_array($app_config['frontend'] ?? null) ? $app_config['frontend'] : [];
+$initial_payload = [
+    'refreshIntervalMs' => $refresh_interval_ms,
+    'fetchedAt' => gmdate('c'),
+    'source' => $telemetry_source,
+    'data' => $json_data,
+];
+
+$dashboard_config = [
+    'telemetryEndpoint' => (string) dashboard_config_value('frontend.telemetryEndpoint', 'telemetry.php?format=json'),
+    'tileProxyEndpoint' => 'tile-proxy.php',
+    'refreshIntervalMs' => $refresh_interval_ms,
+    'telemetryRequestTimeoutMs' => (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500),
+    'remoteTelemetryUrls' => is_array($frontend_config['remoteTelemetryUrls'] ?? null) ? $frontend_config['remoteTelemetryUrls'] : [],
+    'playersRefreshMs' => (int) (($frontend_config['playersRefreshMs'] ?? null) ?? (($frontend_config['players']['refreshMs'] ?? null) ?? 3000)),
+    'playersRadiusDefault' => (int) (($frontend_config['playersRadiusDefault'] ?? null) ?? (($frontend_config['players']['radiusDefault'] ?? null) ?? 5500)),
+    'playersServerDefault' => (int) (($frontend_config['playersServerDefault'] ?? null) ?? (($frontend_config['players']['serverDefault'] ?? null) ?? 50)),
+    'telemetryPolling' => is_array($frontend_config['telemetryPolling'] ?? null) ? $frontend_config['telemetryPolling'] : [],
+    'speedRing' => is_array($frontend_config['speedRing'] ?? null) ? $frontend_config['speedRing'] : [],
+    'storageKeys' => is_array($frontend_config['storageKeys'] ?? null) ? $frontend_config['storageKeys'] : [],
+    'routePlanner' => is_array($frontend_config['routePlanner'] ?? null) ? $frontend_config['routePlanner'] : [],
+    'mapDefaults' => is_array($frontend_config['mapDefaults'] ?? null) ? $frontend_config['mapDefaults'] : [],
+    'mapBounds' => is_array($frontend_config['mapBounds'] ?? null) ? $frontend_config['mapBounds'] : [],
+    'mapTiles' => is_array($frontend_config['mapTiles'] ?? null) ? $frontend_config['mapTiles'] : [],
+    'initialPayload' => $initial_payload,
+];
+
+$json_flags = JSON_UNESCAPED_SLASHES
+    | JSON_UNESCAPED_UNICODE
+    | JSON_HEX_TAG
+    | JSON_HEX_AMP
+    | JSON_HEX_APOS
+    | JSON_HEX_QUOT;
+?>
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>More Informations</title>
+    <meta name="description" content="<?php echo htmlspecialchars($app_description, ENT_QUOTES, 'UTF-8'); ?>">
+    <title><?php echo htmlspecialchars($app_title, ENT_QUOTES, 'UTF-8'); ?> - Info</title>
     <link rel="stylesheet" href="infos.css">
+    <style><?php echo $dashboard_theme_css; ?></style>
 </head>
 
 <body>
     <a class="back" href="indexV2.php">Back to dashboard</a>
+    <form class="konvoy-server-form" id="konvoy-server-form">
+        <label for="konvoy-server-urls" class="visually-hidden">Other player telemetry URLs split by comma</label>
+        <input type="text" id="konvoy-server-urls" class="konvoy-server-input" placeholder="Other telemetry URLs, comma separated (http://localhost:8080/telemetry.php?format=json, http://example.com:8000/api/ets2/telemetry)" aria-describedby="konvoy-server-url-description konvoy-server-url-status" autocomplete="off" spellcheck="false">
+        <button type="submit" class="konvoy-server-save">Use URLs</button>
+        <p id="konvoy-server-url-description" class="konvoy-server-description">Enter direct telemetry endpoints for other players. Separate multiple URLs with commas.</p>
+        <p id="konvoy-server-url-status" class="konvoy-server-status" aria-live="polite"></p>
+    </form>
 
     <section class="workspace-shell">
         <div class="section-tabs" role="tablist" aria-label="Dashboard sections">

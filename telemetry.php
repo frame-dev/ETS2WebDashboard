@@ -272,6 +272,133 @@ function fetch_telemetry_data($telemetry_url = TELEMETRY_URL, &$source = null)
     return [];
 }
 
+function telemetry_fetch_json_url(string $url, ?array &$source = null): ?array
+{
+    $source = [
+        'statusCode' => null,
+        'error' => null,
+    ];
+
+    $timeoutMs = (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500);
+    $timeoutSeconds = max(1.0, $timeoutMs / 1000);
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => $timeoutSeconds,
+            'header' => "Accept: application/json\r\nUser-Agent: ETS2WebDashboard/1.0\r\n",
+            'ignore_errors' => true,
+        ],
+    ]);
+
+    $payload = @file_get_contents($url, false, $context);
+    $responseHeaders = $http_response_header ?? [];
+    $statusCode = telemetry_http_status_code(is_array($responseHeaders) ? $responseHeaders : []);
+    $source['statusCode'] = $statusCode;
+
+    if ($payload === false) {
+        $source['error'] = 'Unable to reach telemetry URL';
+        return null;
+    }
+
+    if ($statusCode !== null && ($statusCode < 200 || $statusCode >= 300)) {
+        $source['error'] = 'Telemetry URL returned non-success status';
+        return null;
+    }
+
+    $decoded = json_decode($payload, true);
+    if (!is_array($decoded)) {
+        $source['error'] = 'Telemetry URL returned invalid JSON';
+        return null;
+    }
+
+    return $decoded;
+}
+
+function telemetry_parse_remote_urls(string $raw): array
+{
+    $parts = preg_split('/[\r\n,]+/', $raw) ?: [];
+    $urls = [];
+
+    foreach ($parts as $part) {
+        $candidate = trim($part);
+        if ($candidate === '') {
+            continue;
+        }
+
+        $validated = filter_var($candidate, FILTER_VALIDATE_URL);
+        if (!is_string($validated) || $validated === '') {
+            continue;
+        }
+
+        $scheme = strtolower((string) parse_url($validated, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            continue;
+        }
+
+        $urls[$validated] = true;
+        if (count($urls) >= 12) {
+            break;
+        }
+    }
+
+    return array_keys($urls);
+}
+
+function telemetry_extract_remote_player_payload(array $payload): array
+{
+    $data = $payload['data'] ?? $payload['Data'] ?? $payload;
+    return is_array($data) ? $data : [];
+}
+
+function telemetry_build_remote_player(array $data, string $sourceUrl): ?array
+{
+    $x = get_telemetry_value($data, 'truck.placement.x');
+    $z = get_telemetry_value($data, 'truck.placement.z');
+    $heading = get_telemetry_value($data, 'truck.placement.heading', 0);
+
+    if (!is_numeric($x) || !is_numeric($z)) {
+        return null;
+    }
+
+    $host = (string) parse_url($sourceUrl, PHP_URL_HOST);
+    $licensePlate = trim((string) get_telemetry_value($data, 'truck.licensePlate', ''));
+    $make = trim((string) get_telemetry_value($data, 'truck.make', ''));
+    $model = trim((string) get_telemetry_value($data, 'truck.model', ''));
+    $name = $licensePlate;
+
+    if ($name === '') {
+        $name = trim($make . ' ' . $model);
+    }
+
+    if ($name === '') {
+        $name = $host !== '' ? $host : 'Remote telemetry';
+    }
+
+    return [
+        'Name' => $name,
+        'X' => (float) $x,
+        'Y' => (float) $z,
+        'Heading' => is_numeric($heading) ? (float) $heading : 0.0,
+        'MpId' => 'remote-' . md5($sourceUrl),
+        'SourceUrl' => $sourceUrl,
+        'SourceType' => 'remoteTelemetry',
+    ];
+}
+
+function telemetry_load_local_config_file(string $path): array
+{
+    if (!is_file($path)) {
+        return [];
+    }
+
+    $loaded = require $path;
+    return is_array($loaded) ? $loaded : [];
+}
+
+function telemetry_export_local_config_file(array $config): string
+{
+    return "<?php\n\ndeclare(strict_types=1);\n\nreturn " . var_export($config, true) . ";\n";
+}
+
 function get_telemetry_refresh_interval_ms()
 {
     return TELEMETRY_REFRESH_INTERVAL_MS;
@@ -1352,4 +1479,101 @@ if (
 
     echo $response;
     exit;
+}
+
+if (
+    basename(__FILE__) === basename($_SERVER["SCRIPT_FILENAME"] ?? "") &&
+    (($_GET["format"] ?? "") === "remotePlayers")
+) {
+    header("Content-Type: application/json; charset=utf-8");
+    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    header("Pragma: no-cache");
+
+    $urls = telemetry_parse_remote_urls((string) ($_GET['urls'] ?? ''));
+    $players = [];
+    $errors = [];
+
+    foreach ($urls as $url) {
+        $source = null;
+        $payload = telemetry_fetch_json_url($url, $source);
+        if (!is_array($payload)) {
+            $errors[] = [
+                'url' => $url,
+                'error' => (string) ($source['error'] ?? 'Remote telemetry unavailable'),
+            ];
+            continue;
+        }
+
+        $remoteData = telemetry_extract_remote_player_payload($payload);
+        $player = telemetry_build_remote_player($remoteData, $url);
+        if ($player === null) {
+            $errors[] = [
+                'url' => $url,
+                'error' => 'Telemetry payload did not include truck placement coordinates',
+            ];
+            continue;
+        }
+
+        $players[] = $player;
+    }
+
+    echo json_encode([
+        'Success' => true,
+        'Data' => $players,
+        'Errors' => $errors,
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if (
+    basename(__FILE__) === basename($_SERVER["SCRIPT_FILENAME"] ?? "") &&
+    (($_GET["format"] ?? "") === "saveRemoteTelemetryUrls")
+) {
+    header("Content-Type: application/json; charset=utf-8");
+    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    header("Pragma: no-cache");
+
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        http_response_code(405);
+        echo json_encode([
+            'Success' => false,
+            'error' => 'Use POST to save remote telemetry URLs.',
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    $urls = telemetry_parse_remote_urls((string) ($_POST['urls'] ?? ''));
+    $configLocalPath = __DIR__ . '/config.local.php';
+
+    try {
+        $localConfig = telemetry_load_local_config_file($configLocalPath);
+        if (!isset($localConfig['frontend']) || !is_array($localConfig['frontend'])) {
+            $localConfig['frontend'] = [];
+        }
+
+        $localConfig['frontend']['remoteTelemetryUrls'] = $urls;
+        $saved = @file_put_contents($configLocalPath, telemetry_export_local_config_file($localConfig), LOCK_EX);
+
+        if ($saved === false) {
+            http_response_code(500);
+            echo json_encode([
+                'Success' => false,
+                'error' => 'Could not write config.local.php.',
+            ], JSON_UNESCAPED_SLASHES);
+            exit;
+        }
+
+        echo json_encode([
+            'Success' => true,
+            'Data' => $urls,
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
+    } catch (Throwable $exception) {
+        http_response_code(500);
+        echo json_encode([
+            'Success' => false,
+            'error' => 'Could not save remote telemetry URLs: ' . $exception->getMessage(),
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
 }

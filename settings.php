@@ -195,6 +195,9 @@ function settings_build_managed_config(array $formData): array
         'frontend' => [
             'routePlanner' => $formData['routePlanner'],
             'speedRing' => $formData['speedRing'],
+            'playersRefreshMs' => $formData['players']['playersRefreshMs'],
+            'playersRadiusDefault' => $formData['players']['playersRadiusDefault'],
+            'playersServerDefault' => $formData['players']['playersServerDefault'],
             'telemetryPolling' => $formData['telemetryPolling'],
             'telemetryEndpoint' => $formData['frontend']['telemetryEndpoint'],
             'storageKeys' => $formData['frontend']['storageKeys'],
@@ -213,12 +216,16 @@ function settings_apply_managed_config(array $localConfig, array $managedConfig)
     $localConfig['snapshots'] = $managedConfig['snapshots'];
     $localConfig['frontend']['routePlanner'] = $managedConfig['frontend']['routePlanner'];
     $localConfig['frontend']['speedRing'] = $managedConfig['frontend']['speedRing'];
+    $localConfig['frontend']['playersRefreshMs'] = $managedConfig['frontend']['playersRefreshMs'];
+    $localConfig['frontend']['playersRadiusDefault'] = $managedConfig['frontend']['playersRadiusDefault'];
+    $localConfig['frontend']['playersServerDefault'] = $managedConfig['frontend']['playersServerDefault'];
     $localConfig['frontend']['telemetryPolling'] = $managedConfig['frontend']['telemetryPolling'];
     $localConfig['frontend']['telemetryEndpoint'] = $managedConfig['frontend']['telemetryEndpoint'];
     $localConfig['frontend']['storageKeys'] = $managedConfig['frontend']['storageKeys'];
     $localConfig['frontend']['mapDefaults'] = $managedConfig['frontend']['mapDefaults'];
     $localConfig['frontend']['mapBounds'] = $managedConfig['frontend']['mapBounds'];
     $localConfig['frontend']['mapTiles'] = $managedConfig['frontend']['mapTiles'];
+    unset($localConfig['frontend']['players']);
 
     return $localConfig;
 }
@@ -265,6 +272,9 @@ function settings_import_json_to_form_data(array $currentFormData, array $import
     $currentFormData['speedRing']['maxDisplayKph'] = max(1, settings_int_value($frontend['speedRing']['maxDisplayKph'] ?? null, $currentFormData['speedRing']['maxDisplayKph']));
     $currentFormData['speedRing']['overspeedToleranceKph'] = max(0, settings_float_value($frontend['speedRing']['overspeedToleranceKph'] ?? null, $currentFormData['speedRing']['overspeedToleranceKph']));
     $currentFormData['speedRing']['trendSensitivityKph'] = max(0, settings_float_value($frontend['speedRing']['trendSensitivityKph'] ?? null, $currentFormData['speedRing']['trendSensitivityKph']));
+    $currentFormData['players']['playersRefreshMs'] = max(250, settings_int_value(($frontend['playersRefreshMs'] ?? null) ?? ($frontend['players']['refreshMs'] ?? null), $currentFormData['players']['playersRefreshMs']));
+    $currentFormData['players']['playersRadiusDefault'] = max(1, settings_int_value(($frontend['playersRadiusDefault'] ?? null) ?? ($frontend['players']['radiusDefault'] ?? null), $currentFormData['players']['playersRadiusDefault']));
+    $currentFormData['players']['playersServerDefault'] = max(1, settings_int_value(($frontend['playersServerDefault'] ?? null) ?? ($frontend['players']['serverDefault'] ?? null), $currentFormData['players']['playersServerDefault']));
     $currentFormData['telemetryPolling']['backoffStepMs'] = max(0, settings_int_value($frontend['telemetryPolling']['backoffStepMs'] ?? null, $currentFormData['telemetryPolling']['backoffStepMs']));
     $currentFormData['telemetryPolling']['maxBackoffMs'] = max(0, settings_int_value($frontend['telemetryPolling']['maxBackoffMs'] ?? null, $currentFormData['telemetryPolling']['maxBackoffMs']));
     $currentFormData['telemetryPolling']['hiddenIntervalMs'] = max(0, settings_int_value($frontend['telemetryPolling']['hiddenIntervalMs'] ?? null, $currentFormData['telemetryPolling']['hiddenIntervalMs']));
@@ -338,6 +348,20 @@ $speedRingConfig = [
     'overspeedToleranceKph' => (float) dashboard_config_value('frontend.speedRing.overspeedToleranceKph', 2),
     'trendSensitivityKph' => (float) dashboard_config_value('frontend.speedRing.trendSensitivityKph', 0.8),
 ];
+$playersConfig = [
+    'playersRefreshMs' => (int) dashboard_config_value(
+        'frontend.playersRefreshMs',
+        (int) dashboard_config_value('frontend.players.refreshMs', 3000)
+    ),
+    'playersRadiusDefault' => (int) dashboard_config_value(
+        'frontend.playersRadiusDefault',
+        (int) dashboard_config_value('frontend.players.radiusDefault', 5500)
+    ),
+    'playersServerDefault' => (int) dashboard_config_value(
+        'frontend.playersServerDefault',
+        (int) dashboard_config_value('frontend.players.serverDefault', 50)
+    ),
+];
 $telemetryPollingConfig = [
     'backoffStepMs' => (int) dashboard_config_value('frontend.telemetryPolling.backoffStepMs', 1000),
     'maxBackoffMs' => (int) dashboard_config_value('frontend.telemetryPolling.maxBackoffMs', 30000),
@@ -383,6 +407,7 @@ $formData = [
     'snapshots' => $snapshotConfig,
     'routePlanner' => $routePlannerConfig,
     'speedRing' => $speedRingConfig,
+    'players' => $playersConfig,
     'telemetryPolling' => $telemetryPollingConfig,
     'mapDefaults' => $mapDefaultsConfig,
     'mapBounds' => $mapBoundsConfig,
@@ -513,6 +538,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'maxDisplayKph' => max(1, settings_int_value($_POST['speed_ring_max_display_kph'] ?? null, $speedRingConfig['maxDisplayKph'])),
                 'overspeedToleranceKph' => max(0, settings_float_value($_POST['speed_ring_overspeed_tolerance_kph'] ?? null, $speedRingConfig['overspeedToleranceKph'])),
                 'trendSensitivityKph' => max(0, settings_float_value($_POST['speed_ring_trend_sensitivity_kph'] ?? null, $speedRingConfig['trendSensitivityKph'])),
+            ],
+            'players' => [
+                'playersRefreshMs' => max(250, settings_int_value($_POST['frontend_players_refresh_ms'] ?? null, $playersConfig['playersRefreshMs'])),
+                'playersRadiusDefault' => max(1, settings_int_value($_POST['frontend_players_radius_default'] ?? null, $playersConfig['playersRadiusDefault'])),
+                'playersServerDefault' => max(1, settings_int_value($_POST['frontend_players_server_default'] ?? null, $playersConfig['playersServerDefault'])),
             ],
             'telemetryPolling' => [
                 'backoffStepMs' => max(0, settings_int_value($_POST['telemetry_polling_backoff_step_ms'] ?? null, $telemetryPollingConfig['backoffStepMs'])),
@@ -966,6 +996,21 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                 <input id="telemetry-polling-hidden-interval-ms" name="telemetry_polling_hidden_interval_ms" type="number" min="0" step="100" value="<?php echo htmlspecialchars((string) $formData['telemetryPolling']['hiddenIntervalMs'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">Reduced polling cadence when the browser tab is not visible.</span>
                             </div>
+                            <div class="field">
+                                <label for="frontend-players-refresh-ms">Players refresh interval</label>
+                                <input id="frontend-players-refresh-ms" name="frontend_players_refresh_ms" type="number" min="250" step="250" value="<?php echo htmlspecialchars((string) $formData['players']['playersRefreshMs'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">How often the frontend refreshes nearby player markers.</span>
+                            </div>
+                            <div class="field">
+                                <label for="frontend-players-radius-default">Players radius default</label>
+                                <input id="frontend-players-radius-default" name="frontend_players_radius_default" type="number" min="1" step="100" value="<?php echo htmlspecialchars((string) $formData['players']['playersRadiusDefault'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Default nearby-player search radius used for map lookups.</span>
+                            </div>
+                            <div class="field full">
+                                <label for="frontend-players-server-default">Players server default</label>
+                                <input id="frontend-players-server-default" name="frontend_players_server_default" type="number" min="1" step="1" value="<?php echo htmlspecialchars((string) $formData['players']['playersServerDefault'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Default TruckersMP server id used when fetching players.</span>
+                            </div>
                         </div>
                     </section>
 
@@ -1270,7 +1315,7 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                             </div>
                         </div>
                         <pre><?php echo htmlspecialchars($configPreview, ENT_QUOTES, 'UTF-8'); ?></pre>
-                        <div class="note">Saving here updates <code>app</code>, <code>design</code>, <code>telemetry</code>, <code>snapshots</code>, <code>frontend.telemetryEndpoint</code>, <code>frontend.storageKeys</code>, <code>frontend.telemetryPolling</code>, <code>frontend.routePlanner</code>, <code>frontend.speedRing</code>, <code>frontend.mapDefaults</code>, <code>frontend.mapBounds</code>, and <code>frontend.mapTiles</code> in <code>config.local.php</code>. Other local config keys are preserved.</div>
+                        <div class="note">Saving here updates <code>app</code>, <code>design</code>, <code>telemetry</code>, <code>snapshots</code>, <code>frontend.telemetryEndpoint</code>, <code>frontend.storageKeys</code>, <code>frontend.telemetryPolling</code>, <code>frontend.playersRefreshMs</code>, <code>frontend.playersRadiusDefault</code>, <code>frontend.playersServerDefault</code>, <code>frontend.routePlanner</code>, <code>frontend.speedRing</code>, <code>frontend.mapDefaults</code>, <code>frontend.mapBounds</code>, and <code>frontend.mapTiles</code> in <code>config.local.php</code>. Other local config keys are preserved.</div>
                     </section>
                 </div>
             </section>
