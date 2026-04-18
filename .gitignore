@@ -3,4 +3,4 @@ tiles copy
 config.local.php
 tmp
 snapshots
-runtime
+.runtime
