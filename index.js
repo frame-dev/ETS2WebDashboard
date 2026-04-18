@@ -7,7 +7,12 @@ function readNumberConfig(value, fallback) {
 
 const telemetryEndpoint = config.telemetryEndpoint || "telemetry.php?format=json";
 const refreshIntervalMs = readNumberConfig(config.refreshIntervalMs, 250);
-const telemetryRequestTimeoutMs = readNumberConfig(config.telemetryRequestTimeoutMs, Math.max(2500, refreshIntervalMs - 500));
+const telemetryUpstreamTimeoutMs = readNumberConfig(config.telemetryRequestTimeoutMs, 4500);
+const telemetryRequestTimeoutMs = Math.max(
+    telemetryUpstreamTimeoutMs + 1500,
+    refreshIntervalMs + 1000,
+    6500,
+);
 const telemetryPollingConfig = config.telemetryPolling || {};
 const speedRingConfig = config.speedRing || {};
 const speedRingMaxDisplayKph = readNumberConfig(speedRingConfig.maxDisplayKph, 130);
@@ -101,6 +106,7 @@ const elements = {
     truckersMpToggle: document.getElementById("truckersmp-toggle"),
     konvoyServerForm: document.getElementById("konvoy-server-form"),
     konvoyServerUrls: document.getElementById("konvoy-server-urls"),
+    remoteTelemetryToggle: document.getElementById("remote-telemetry-toggle"),
     konvoyServerStatus: document.getElementById("konvoy-server-url-status"),
     heroTags: document.getElementById("hero-tags"),
     heroSpeedValue: document.getElementById("hero-speed-value"),
@@ -212,9 +218,11 @@ let telemetryConsecutiveFailures = 0;
 let telemetryLastSourceType = "upstream";
 let playersFetchTimer = null;
 let playersFetchInFlight = false;
+let remoteTelemetryFetchPromise = null;
 let playersData = [];
 let remoteTelemetryPlayers = [];
 let playersOverlayEnabled = true;
+let remoteTelemetryEnabled = true;
 let remoteTelemetryUrls = Array.isArray(config.remoteTelemetryUrls)
     ? normalizeRemoteTelemetryUrls(config.remoteTelemetryUrls.join(", "))
     : [];
@@ -730,6 +738,7 @@ function persistMapPreferences() {
             heroZoom: heroMapState.zoom,
             heroFollowTruck: heroMapState.followTruck,
             playersOverlayEnabled,
+            remoteTelemetryEnabled,
         }));
     } catch (error) {
         // Ignore storage failures to keep runtime behavior stable.
@@ -766,6 +775,10 @@ function loadMapPreferences() {
 
         if (typeof parsed?.playersOverlayEnabled === "boolean") {
             playersOverlayEnabled = parsed.playersOverlayEnabled;
+        }
+
+        if (typeof parsed?.remoteTelemetryEnabled === "boolean") {
+            remoteTelemetryEnabled = parsed.remoteTelemetryEnabled;
         }
     } catch (error) {
         // Ignore malformed data and fall back to defaults.
@@ -842,7 +855,7 @@ function normalizeRemoteTelemetryUrls(value) {
 function getDisplayedPlayers() {
     return [
         ...(playersOverlayEnabled ? playersData : []),
-        ...remoteTelemetryPlayers,
+        ...(remoteTelemetryEnabled ? remoteTelemetryPlayers : []),
     ];
 }
 
@@ -852,10 +865,37 @@ function syncRemoteTelemetryInput() {
     }
 }
 
+function updateRemoteTelemetryToggle() {
+    if (!(elements.remoteTelemetryToggle instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const label = remoteTelemetryEnabled ? "Direct URLs On" : "Direct URLs Off";
+    elements.remoteTelemetryToggle.textContent = label;
+    elements.remoteTelemetryToggle.dataset.state = remoteTelemetryEnabled ? "active" : "inactive";
+    elements.remoteTelemetryToggle.setAttribute("aria-pressed", remoteTelemetryEnabled ? "true" : "false");
+    elements.remoteTelemetryToggle.setAttribute(
+        "aria-label",
+        remoteTelemetryEnabled
+            ? "Disable direct telemetry fetching"
+            : "Enable direct telemetry fetching"
+    );
+    elements.remoteTelemetryToggle.title = remoteTelemetryEnabled
+        ? "Disable direct telemetry fetching"
+        : "Enable direct telemetry fetching";
+}
+
 function updateRemoteTelemetryStatus(message = "") {
     if (elements.konvoyServerStatus) {
         if (message !== "") {
             elements.konvoyServerStatus.textContent = message;
+            return;
+        }
+
+        if (!remoteTelemetryEnabled) {
+            elements.konvoyServerStatus.textContent = remoteTelemetryUrls.length > 0
+                ? `Direct telemetry fetching is disabled. ${remoteTelemetryUrls.length} saved source${remoteTelemetryUrls.length === 1 ? "" : "s"}.`
+                : "Direct telemetry fetching is disabled.";
             return;
         }
 
@@ -866,37 +906,53 @@ function updateRemoteTelemetryStatus(message = "") {
 }
 
 async function fetchRemoteTelemetryPlayers() {
-    if (remoteTelemetryUrls.length === 0) {
+    if (!remoteTelemetryEnabled || remoteTelemetryUrls.length === 0) {
         remoteTelemetryPlayers = [];
         updateRemoteTelemetryStatus();
+        renderPlayersOnMap();
+        renderPlayersOnHeroMap();
+        updateTruckersMpToggle();
         return;
     }
 
-    try {
-        const query = encodeURIComponent(remoteTelemetryUrls.join(","));
-        const response = await fetch(`telemetry.php?format=remotePlayers&urls=${query}`, {
-            cache: "no-store",
-        });
-
-        if (!response.ok) {
-            remoteTelemetryPlayers = [];
-            updateRemoteTelemetryStatus("Direct telemetry sources could not be reached.");
-            return;
-        }
-
-        const json = await response.json();
-        remoteTelemetryPlayers = Array.isArray(json.Data) ? json.Data : [];
-
-        const errorCount = Array.isArray(json.Errors) ? json.Errors.length : 0;
-        if (errorCount > 0) {
-            updateRemoteTelemetryStatus(`Loaded ${remoteTelemetryPlayers.length} direct players, ${errorCount} source${errorCount === 1 ? "" : "s"} failed.`);
-        } else {
-            updateRemoteTelemetryStatus(`Loaded ${remoteTelemetryPlayers.length} direct player${remoteTelemetryPlayers.length === 1 ? "" : "s"}.`);
-        }
-    } catch {
-        remoteTelemetryPlayers = [];
-        updateRemoteTelemetryStatus("Direct telemetry sources could not be reached.");
+    if (remoteTelemetryFetchPromise) {
+        return remoteTelemetryFetchPromise;
     }
+
+    remoteTelemetryFetchPromise = (async () => {
+        try {
+            const query = encodeURIComponent(remoteTelemetryUrls.join(","));
+            const response = await fetch(`telemetry.php?format=remotePlayers&urls=${query}`, {
+                cache: "no-store",
+            });
+
+            if (!response.ok) {
+                remoteTelemetryPlayers = [];
+                updateRemoteTelemetryStatus("Direct telemetry sources are offline. The rest of the dashboard is still live.");
+                return;
+            }
+
+            const json = await response.json();
+            remoteTelemetryPlayers = Array.isArray(json.Data) ? json.Data : [];
+
+            const errorCount = Array.isArray(json.Errors) ? json.Errors.length : 0;
+            if (errorCount > 0) {
+                updateRemoteTelemetryStatus(`Loaded ${remoteTelemetryPlayers.length} direct players, ${errorCount} source${errorCount === 1 ? "" : "s"} offline.`);
+            } else {
+                updateRemoteTelemetryStatus(`Loaded ${remoteTelemetryPlayers.length} direct player${remoteTelemetryPlayers.length === 1 ? "" : "s"}.`);
+            }
+        } catch {
+            remoteTelemetryPlayers = [];
+            updateRemoteTelemetryStatus("Direct telemetry sources are offline. The rest of the dashboard is still live.");
+        } finally {
+            remoteTelemetryFetchPromise = null;
+            renderPlayersOnMap();
+            renderPlayersOnHeroMap();
+            updateTruckersMpToggle();
+        }
+    })();
+
+    return remoteTelemetryFetchPromise;
 }
 
 async function setRemoteTelemetryUrls(urls, persist = true) {
@@ -931,6 +987,43 @@ async function setRemoteTelemetryUrls(urls, persist = true) {
     }
 
     updateRemoteTelemetryStatus();
+    if (!remoteTelemetryEnabled || remoteTelemetryUrls.length === 0) {
+        remoteTelemetryPlayers = [];
+        renderPlayersOnMap();
+        renderPlayersOnHeroMap();
+        updateTruckersMpToggle();
+        return;
+    }
+
+    void fetchRemoteTelemetryPlayers();
+}
+
+function setRemoteTelemetryEnabled(enabled, persist = true) {
+    remoteTelemetryEnabled = Boolean(enabled);
+    updateRemoteTelemetryToggle();
+    updateRemoteTelemetryStatus();
+
+    if (!remoteTelemetryEnabled) {
+        remoteTelemetryPlayers = [];
+        if (playersOverlayEnabled) {
+            startPlayerPolling();
+        } else {
+            stopPlayerPolling();
+            renderPlayersOnMap();
+            renderPlayersOnHeroMap();
+            updateTruckersMpToggle();
+        }
+    } else if (remoteTelemetryUrls.length > 0) {
+        startPlayerPolling();
+    } else {
+        renderPlayersOnMap();
+        renderPlayersOnHeroMap();
+        updateTruckersMpToggle();
+    }
+
+    if (persist) {
+        persistMapPreferences();
+    }
 }
 
 function stopPlayerPolling() {
@@ -948,7 +1041,7 @@ function setPlayersOverlayEnabled(enabled, persist = true) {
 
     if (!playersOverlayEnabled) {
         playersData = [];
-        if (remoteTelemetryUrls.length > 0) {
+        if (remoteTelemetryEnabled && remoteTelemetryUrls.length > 0) {
             startPlayerPolling();
         } else {
             stopPlayerPolling();
@@ -2746,7 +2839,7 @@ function renderWorld(data) {
 
 async function fetchPlayersForMap() {
     const telemetryData = getLatestRenderableTelemetryData();
-    if (playersFetchInFlight || !telemetryData) {
+    if (playersFetchInFlight || telemetryRequestInFlight || !telemetryData) {
         return;
     }
 
@@ -2756,10 +2849,10 @@ async function fetchPlayersForMap() {
 
     if (x === null || z === null) {
         playersData = [];
-        await fetchRemoteTelemetryPlayers();
         renderPlayersOnMap();
         renderPlayersOnHeroMap();
         updateTruckersMpToggle();
+        void fetchRemoteTelemetryPlayers();
         return;
     }
 
@@ -2795,10 +2888,10 @@ async function fetchPlayersForMap() {
         playersData = [];
     }
 
-    await fetchRemoteTelemetryPlayers();
     updateTruckersMpToggle();
     renderPlayersOnMap();
     renderPlayersOnHeroMap();
+    void fetchRemoteTelemetryPlayers();
 }
 
 function renderPlayersOnMap() {
@@ -2948,7 +3041,7 @@ function renderPlayersOnHeroMap() {
 }
 
 function startPlayerPolling() {
-    if (!playersOverlayEnabled && remoteTelemetryUrls.length === 0) {
+    if (!playersOverlayEnabled && (!remoteTelemetryEnabled || remoteTelemetryUrls.length === 0)) {
         stopPlayerPolling();
         return;
     }
@@ -3174,8 +3267,8 @@ function renderTelemetry(payload) {
 }
 
 async function updateTelemetry() {
-    if (telemetryRequestInFlight) {
-        scheduleTelemetryUpdate(refreshIntervalMs);
+    if (telemetryRequestInFlight || playersFetchInFlight || remoteTelemetryFetchPromise) {
+        scheduleTelemetryUpdate(Math.min(refreshIntervalMs, 100));
         return;
     }
 
@@ -3390,6 +3483,12 @@ if (elements.truckersMpToggle) {
     });
 }
 
+if (elements.remoteTelemetryToggle) {
+    bindMapControlPress(elements.remoteTelemetryToggle, () => {
+        setRemoteTelemetryEnabled(!remoteTelemetryEnabled);
+    });
+}
+
 if (elements.konvoyServerForm) {
     elements.konvoyServerForm.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -3397,7 +3496,7 @@ if (elements.konvoyServerForm) {
         await setRemoteTelemetryUrls(urls);
         if (playersOverlayEnabled) {
             await fetchPlayersForMap();
-        } else if (remoteTelemetryUrls.length > 0) {
+        } else if (remoteTelemetryEnabled && remoteTelemetryUrls.length > 0) {
             startPlayerPolling();
         } else {
             remoteTelemetryPlayers = [];
@@ -3462,6 +3561,7 @@ try {
 
 loadMapPreferences();
 updateTruckersMpToggle();
+updateRemoteTelemetryToggle();
 syncRemoteTelemetryInput();
 updateRemoteTelemetryStatus();
 loadCityLocalizations();

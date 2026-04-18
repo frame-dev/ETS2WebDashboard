@@ -279,7 +279,7 @@ function telemetry_fetch_json_url(string $url, ?array &$source = null): ?array
         'error' => null,
     ];
 
-    $timeoutMs = (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500);
+    $timeoutMs = min((int) dashboard_config_value('telemetry.requestTimeoutMs', 4500), 2000);
     $timeoutSeconds = max(1.0, $timeoutMs / 1000);
     $context = stream_context_create([
         'http' => [
@@ -1364,6 +1364,7 @@ function fetchPlayersData($meX, $meY, $radiusInput = 5500, $serverInput = 50)
 {
     $radius = (int)($radiusInput ?: 5500);
     $server = (int)($serverInput ?: 50);
+    $timeoutMs = min((int) dashboard_config_value('telemetry.requestTimeoutMs', 4500), 2000);
 
     $x1 = round($meX - $radius);
     $x2 = round($meX + $radius);
@@ -1375,7 +1376,8 @@ function fetchPlayersData($meX, $meY, $radiusInput = 5500, $serverInput = 50)
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 10,
+        CURLOPT_CONNECTTIMEOUT_MS => min(1000, $timeoutMs),
+        CURLOPT_TIMEOUT_MS => $timeoutMs,
         CURLOPT_USERAGENT => 'ETS2WebDashboard/1.0',
         CURLOPT_HTTPHEADER => ['Accept: application/json'],
     ]);
@@ -1383,7 +1385,7 @@ function fetchPlayersData($meX, $meY, $radiusInput = 5500, $serverInput = 50)
     $response = curl_exec($ch);
     $errno = curl_errno($ch);
     $error = curl_error($ch);
-    unset($ch);
+    curl_close($ch);
 
     if ($response === false || $errno !== 0) {
         throw new Exception("Spieler-Feed nicht erreichbar: $error");
@@ -1463,14 +1465,15 @@ if (
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 10,
+        CURLOPT_CONNECTTIMEOUT_MS => 1000,
+        CURLOPT_TIMEOUT_MS => 2000,
         CURLOPT_USERAGENT => 'ETS2WebDashboard/1.0',
         CURLOPT_HTTPHEADER => ['Accept: application/json'],
     ]);
     $response = curl_exec($ch);
     $errno = curl_errno($ch);
     $error = curl_error($ch);
-    unset($ch);
+    curl_close($ch);
 
     if ($response === false || $errno !== 0) {
         http_response_code(502);

@@ -426,7 +426,7 @@ button:focus-visible,
     position: relative;
     z-index: 2;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 10px 12px;
     align-items: start;
     width: min(760px, calc(100% - 12px));
@@ -468,6 +468,24 @@ button:focus-visible,
     color: #ebfff8;
     font: inherit;
     font-weight: 700;
+}
+
+.konvoy-server-toggle {
+    min-width: 126px;
+    min-height: 42px;
+    padding: 10px 14px;
+    border: 1px solid rgba(121, 199, 255, 0.24);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(21, 43, 66, 0.82), rgba(8, 22, 38, 0.9));
+    color: #e8f6ff;
+    font: inherit;
+    font-weight: 700;
+}
+
+.konvoy-server-toggle[data-state="inactive"] {
+    border-color: rgba(255, 112, 80, 0.24);
+    background: linear-gradient(180deg, rgba(48, 26, 25, 0.82), rgba(26, 12, 12, 0.9));
+    color: #ffe0d8;
 }
 
 .konvoy-server-description,

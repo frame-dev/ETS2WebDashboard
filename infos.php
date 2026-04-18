@@ -81,6 +81,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
     <form class="konvoy-server-form" id="konvoy-server-form">
         <label for="konvoy-server-urls" class="visually-hidden">Other player telemetry URLs split by comma</label>
         <input type="text" id="konvoy-server-urls" class="konvoy-server-input" placeholder="Other telemetry URLs, comma separated (http://localhost:8080/telemetry.php?format=json, http://example.com:8000/api/ets2/telemetry)" aria-describedby="konvoy-server-url-description konvoy-server-url-status" autocomplete="off" spellcheck="false">
+        <button type="button" class="konvoy-server-toggle" id="remote-telemetry-toggle" aria-pressed="true" aria-label="Disable direct telemetry fetching">Direct URLs On</button>
         <button type="submit" class="konvoy-server-save">Use URLs</button>
         <p id="konvoy-server-url-description" class="konvoy-server-description">Enter direct telemetry endpoints for other players. Separate multiple URLs with commas.</p>
         <p id="konvoy-server-url-status" class="konvoy-server-status" aria-live="polite"></p>

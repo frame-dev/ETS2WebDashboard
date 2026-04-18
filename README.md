@@ -2,38 +2,42 @@
 
 A browser-based ETS2 telemetry dashboard built with PHP, JavaScript, and CSS.
 
-The main panel is `indexV2.php`. The built-in PHP router (`router.php`) also routes the site root to that page, so opening `http://localhost:8000/` loads the new dashboard by default.
+The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes the site root to that page, so opening `http://localhost:8000/` loads the newer dashboard by default.
 
 ## What This Project Includes
 
 - `indexV2.php`: the main live dashboard
-- `infos.php`: a secondary information workspace with deeper telemetry sections
+- `infos.php`: a secondary information workspace with deeper telemetry sections and direct remote-player URL controls
 - `settings.php`: a browser-based configuration editor for `config.local.php`
-- `telemetry.php`: the PHP telemetry fetch, cache, and snapshot pipeline
+- `telemetry.php`: the PHP telemetry fetch, cache, snapshot, and remote-player pipeline
 - `tile-proxy.php`: a controlled proxy for external tile servers used by the map views
 - `index.php`: a legacy dashboard page kept alongside the newer V2 panel
 
 ## Features
 
 - Live ETS2 telemetry polling from a configurable upstream endpoint
-- Main dashboard with a large speed ring, direct km/h telemetry readouts, road-limit and tempomat pills anchored to the top and bottom of the ring, route distance, ETA, scaled real-time ETA, and fuel range
+- Shared `250ms` defaults across telemetry refresh, player refresh, and frontend polling floors
+- Main dashboard with a large speed ring, direct km/h telemetry readouts, road-limit and tempomat pills, route distance, ETA, scaled real-time ETA, and fuel range
 - Dashboard status widgets for connection state, last update time, and active refresh interval
 - Dashboard notice cards for telemetry failures, cached fallback mode, and map or tile-source issues
 - Draggable and zoomable hero map with center controls, corrected truck heading, follow defaults, and a live job overlay
+- Other-player overlays on both map views, including TruckersMP area players and direct remote telemetry players
+- Independent `TruckersMP` toolbar toggle so TruckersMP markers can be shown or hidden without disabling direct telemetry URL players
 - Delivery-complete popup with income, XP, trip distance, and parking result
 - Direct dashboard links to `settings.php` and the `infos.php` workspace
 - Expanded information page in `infos.php` with `Overview`, `Systems`, `World`, and `Debug` tabs
+- Direct telemetry URL form in `infos.php` for loading other players from remote telemetry endpoints
 - System and vehicle detail views for truck profile, health, drivetrain, trailer state, controls, lighting, world position, events, and raw telemetry JSON
 - Interactive map system with saved browser preferences, configurable bounds, configurable tile sources, tile config discovery, overzoom support, and static fallback rendering
 - Optional tile proxying through `tile-proxy.php` for approved map tile sources
-- Telemetry backend with upstream fetch control, timeout handling, JSON output for polling, local cache fallback, cache TTL control, and clearer fetch-error reporting
+- Telemetry backend with upstream fetch control, timeout handling, JSON output for polling, local cache fallback, cache TTL control, remote-player aggregation, direct-URL persistence, and clearer fetch-error reporting
 - Integrated snapshot pipeline with timed capture, saved runtime state, duplicate snapshot avoidance, optional pretty-printed output, and configurable snapshot filename patterns
 - Browser-based settings workspace with tabs for `General`, `Telemetry`, `Frontend`, `Maps`, `Snapshots`, and `Transfer`
-- Settings controls for app copy, theme colors, typography, panel styling, telemetry behavior, route planner tuning, speed ring tuning, polling behavior, storage keys, map defaults, map bounds, snapshot naming, and tile sources
+- Settings controls for app copy, theme colors, typography, hero-map player label size, panel styling, telemetry behavior, player polling defaults, route planner tuning, speed ring tuning, polling behavior, storage keys, map defaults, map bounds, snapshot naming, and tile sources
 - Config transfer features including JSON import, JSON export, PHP export, generated managed config preview, and clearer inline import-error feedback
 - Managed settings writes back to `config.local.php` while preserving unrelated local config values
-- Config system with defaults in `config.php`, local overrides in `config.local.php`, environment-variable overrides, and theme color sanitization
-- Local launcher scripts with `run.bat` for Windows and `run.sh` for macOS or Linux PHP startup
+- Config system with defaults in `config.php`, local overrides in `config.local.php`, environment-variable overrides, and theme sanitization
+- Local launcher scripts with `run.bat` for Windows and `run.sh` for macOS or Linux PHP startup, including runtime checks and automatic local-config bootstrapping
 
 ## Requirements
 
@@ -58,6 +62,13 @@ Or use the included launcher scripts:
 - Windows: `run.bat`
 - macOS/Linux: `./run.sh`
 
+`run.sh` will:
+
+- prefer `PHP_BIN`, then `.runtime/php/bin/php`, then `php` on your `PATH`
+- verify PHP `8.0+`, the `curl` extension, and HTTPS stream support
+- create `.runtime/`, `tmp/`, and `snapshots/`
+- create `config.local.php` from `config.local.example.php` if it does not exist
+
 5. Open `http://localhost:8000/` or `http://localhost:8000/indexV2.php` for the main dashboard.
 6. Open `http://localhost:8000/infos.php` for the extended telemetry workspace.
 7. Open `http://localhost:8000/settings.php` to manage configuration from the browser.
@@ -73,6 +84,7 @@ It focuses on fast, at-a-glance driving information:
 - speed and limit awareness
 - live route status
 - hero map with drag and zoom controls
+- TruckersMP overlay toggle
 - delivery completion popup
 - connection and refresh status
 
@@ -86,6 +98,13 @@ It focuses on fast, at-a-glance driving information:
 - `Debug`
 
 This page is useful when you want more detailed truck, trailer, controls, events, and raw payload visibility than the main dashboard shows.
+
+It also includes a direct telemetry URL form for other players. Enter one or more comma-separated telemetry endpoints such as:
+
+- `http://other-pc/telemetry.php?format=json`
+- `http://other-pc:31377/api/ets2/telemetry`
+
+Those URLs are proxied through `telemetry.php`, saved into `config.local.php`, and rendered as additional map players.
 
 ### Settings Workspace
 
@@ -102,11 +121,25 @@ It is split into these tabs:
 
 The settings page edits the managed parts of `config.local.php` without requiring manual PHP edits for every change.
 
-It now includes visual controls for shared UI styling, including font stack, font scale, panel roundness, and glass blur strength.
+It includes visual controls for shared UI styling, including:
+
+- font stack
+- font scale
+- hero-map player label size
+- panel roundness
+- glass blur strength
+
+It also manages the player-overlay defaults:
+
+- `frontend.playersRefreshMs`
+- `frontend.playersRadiusDefault`
+- `frontend.playersServerDefault`
 
 ### Refresh And Speed Units
 
 - The default telemetry refresh interval is `250ms`.
+- The default player refresh interval is `250ms`.
+- Frontend polling defaults are aligned to `250ms` for minimum interval, hidden-tab interval, and max-backoff behavior, with no extra backoff step by default.
 - Frontend speed values are treated as the telemetry source's native km/h values and are not converted with `* 3.6`.
 - The hero speed ring uses the same km/h values for the center speed, overspeed state, peak tracking, road-limit marker, and cruise-control readout.
 
@@ -121,6 +154,10 @@ Main configuration groups:
 - `telemetry`
 - `snapshots`
 - `frontend.telemetryEndpoint`
+- `frontend.remoteTelemetryUrls`
+- `frontend.playersRefreshMs`
+- `frontend.playersRadiusDefault`
+- `frontend.playersServerDefault`
 - `frontend.telemetryPolling`
 - `frontend.speedRing`
 - `frontend.storageKeys`
@@ -150,6 +187,7 @@ return [
         'dangerColor' => '#FF7050',
         'fontFamily' => '"Space Grotesk", "Aptos", "Segoe UI", sans-serif',
         'fontScale' => 1.0,
+        'heroMapPlayerFontSizeRem' => 0.95,
         'panelRadiusPx' => 28,
         'glassBlurPx' => 26,
     ],
@@ -172,12 +210,18 @@ return [
     ],
     'frontend' => [
         'telemetryEndpoint' => 'telemetry.php?format=json',
+        'remoteTelemetryUrls' => [
+            'http://other-pc/telemetry.php?format=json',
+        ],
+        'playersRefreshMs' => 250,
+        'playersRadiusDefault' => 5500,
+        'playersServerDefault' => 50,
         'telemetryPolling' => [
-            'backoffStepMs' => 1000,
-            'maxBackoffMs' => 30000,
-            'hiddenIntervalMs' => 12000,
+            'backoffStepMs' => 0,
+            'maxBackoffMs' => 250,
+            'hiddenIntervalMs' => 250,
             'minimumIntervalMs' => 250,
-            'cacheMultiplier' => 2,
+            'cacheMultiplier' => 1,
         ],
         'speedRing' => [
             'maxDisplayKph' => 130,
@@ -246,8 +290,15 @@ It handles:
 - falling back to cached telemetry if upstream is unavailable
 - capturing timed snapshots to disk
 - tracking snapshot state in `tmp/snapshot-state.json`
+- aggregating remote player data from direct telemetry URLs
+- saving `frontend.remoteTelemetryUrls` back into `config.local.php`
 
 The frontend uses `telemetry.php?format=json` as its default polling endpoint.
+
+Additional telemetry endpoints used by the UI:
+
+- `telemetry.php?format=remotePlayers`
+- `telemetry.php?format=saveRemoteTelemetryUrls`
 
 ## Map And Tile System
 
@@ -258,6 +309,12 @@ Relevant pieces:
 - `index.js`: frontend map rendering, dragging, zooming, map preference persistence, route timing calculations
 - `tile-proxy.php`: optional proxy for allowed external tile sources
 - `map-ets2-preview.jpg`: local static fallback image
+
+The map overlays can display:
+
+- your own truck marker
+- TruckersMP area players
+- direct remote telemetry players from saved URLs
 
 `tile-proxy.php` only allows requests to configured tile base URLs from `frontend.mapTiles.baseUrlCandidates`.
 
@@ -286,13 +343,13 @@ There is also a standalone `snapshot.js` script in the repository, but the main 
 - `settings.css`: settings page styling
 - `settings.js`: settings page tab behavior
 - `index.js`: frontend telemetry, maps, tabs, and rendering logic
-- `telemetry.php`: telemetry fetch, cache, accessor, and snapshot pipeline
+- `telemetry.php`: telemetry fetch, cache, accessor, snapshot, and remote-player pipeline
 - `tile-proxy.php`: tile request proxy with allowed-base-url checks
 - `config.php`: project defaults and environment override handling
 - `config.local.example.php`: local config example
 - `router.php`: PHP built-in server router that serves `indexV2.php` by default
 - `run.bat`: Windows launcher that bootstraps a local PHP runtime and runs `php -S`
-- `run.sh`: macOS/Linux launcher for local PHP startup
+- `run.sh`: macOS/Linux launcher that validates PHP requirements, prepares runtime folders, and starts `router.php`
 - `index.php`: legacy dashboard page
 - `index.css`: legacy dashboard styling
 - `map-ets2-preview.jpg`: static map fallback image
@@ -313,7 +370,7 @@ There is also a standalone `snapshot.js` script in the repository, but the main 
 ## Notes
 
 - `router.php` makes the project root load `indexV2.php`, so the V2 dashboard is the default landing page.
-- The settings page manages a defined set of configuration keys and preserves unrelated local config values during import/update flows.
+- The settings page manages a defined set of configuration keys and preserves unrelated local config values during import and update flows.
 
 ## License
 
