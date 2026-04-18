@@ -218,6 +218,7 @@ let telemetryConsecutiveFailures = 0;
 let telemetryLastSourceType = "upstream";
 let playersFetchTimer = null;
 let playersFetchInFlight = false;
+let remoteTelemetryTimer = null;
 let remoteTelemetryFetchPromise = null;
 let playersData = [];
 let remoteTelemetryPlayers = [];
@@ -227,6 +228,7 @@ let remoteTelemetryUrls = Array.isArray(config.remoteTelemetryUrls)
     ? normalizeRemoteTelemetryUrls(config.remoteTelemetryUrls.join(", "))
     : [];
 const playersRefreshMs = Math.max(250, readNumberConfig(config.playersRefreshMs, 250));
+const remoteTelemetryRefreshMs = Math.max(playersRefreshMs, 2000);
 const playersRadiusDefault = Math.max(1, Number(config.playersRadiusDefault) || 5500);
 const playersServerDefault = Math.max(1, Math.floor(Number(config.playersServerDefault) || 50));
 let speedRingPeakKph = 0;
@@ -915,6 +917,10 @@ async function fetchRemoteTelemetryPlayers() {
         return;
     }
 
+    if (telemetryRequestInFlight || playersFetchInFlight) {
+        return;
+    }
+
     if (remoteTelemetryFetchPromise) {
         return remoteTelemetryFetchPromise;
     }
@@ -955,6 +961,45 @@ async function fetchRemoteTelemetryPlayers() {
     return remoteTelemetryFetchPromise;
 }
 
+function stopRemoteTelemetryPolling() {
+    if (remoteTelemetryTimer !== null) {
+        window.clearTimeout(remoteTelemetryTimer);
+        remoteTelemetryTimer = null;
+    }
+}
+
+function scheduleRemoteTelemetryPolling(delayMs = remoteTelemetryRefreshMs) {
+    stopRemoteTelemetryPolling();
+
+    if (!remoteTelemetryEnabled || remoteTelemetryUrls.length === 0) {
+        return;
+    }
+
+    remoteTelemetryTimer = window.setTimeout(() => {
+        remoteTelemetryTimer = null;
+        void fetchRemoteTelemetryPlayers().finally(() => {
+            scheduleRemoteTelemetryPolling(remoteTelemetryRefreshMs);
+        });
+    }, Math.max(250, delayMs));
+}
+
+function startRemoteTelemetryPolling(immediate = true) {
+    stopRemoteTelemetryPolling();
+
+    if (!remoteTelemetryEnabled || remoteTelemetryUrls.length === 0) {
+        return;
+    }
+
+    if (immediate) {
+        void fetchRemoteTelemetryPlayers().finally(() => {
+            scheduleRemoteTelemetryPolling(remoteTelemetryRefreshMs);
+        });
+        return;
+    }
+
+    scheduleRemoteTelemetryPolling(remoteTelemetryRefreshMs);
+}
+
 async function setRemoteTelemetryUrls(urls, persist = true) {
     remoteTelemetryUrls = Array.isArray(urls) ? urls : [];
     syncRemoteTelemetryInput();
@@ -989,13 +1034,14 @@ async function setRemoteTelemetryUrls(urls, persist = true) {
     updateRemoteTelemetryStatus();
     if (!remoteTelemetryEnabled || remoteTelemetryUrls.length === 0) {
         remoteTelemetryPlayers = [];
+        stopRemoteTelemetryPolling();
         renderPlayersOnMap();
         renderPlayersOnHeroMap();
         updateTruckersMpToggle();
         return;
     }
 
-    void fetchRemoteTelemetryPlayers();
+    startRemoteTelemetryPolling(true);
 }
 
 function setRemoteTelemetryEnabled(enabled, persist = true) {
@@ -1005,16 +1051,12 @@ function setRemoteTelemetryEnabled(enabled, persist = true) {
 
     if (!remoteTelemetryEnabled) {
         remoteTelemetryPlayers = [];
-        if (playersOverlayEnabled) {
-            startPlayerPolling();
-        } else {
-            stopPlayerPolling();
-            renderPlayersOnMap();
-            renderPlayersOnHeroMap();
-            updateTruckersMpToggle();
-        }
+        stopRemoteTelemetryPolling();
+        renderPlayersOnMap();
+        renderPlayersOnHeroMap();
+        updateTruckersMpToggle();
     } else if (remoteTelemetryUrls.length > 0) {
-        startPlayerPolling();
+        startRemoteTelemetryPolling(true);
     } else {
         renderPlayersOnMap();
         renderPlayersOnHeroMap();
@@ -1041,13 +1083,9 @@ function setPlayersOverlayEnabled(enabled, persist = true) {
 
     if (!playersOverlayEnabled) {
         playersData = [];
-        if (remoteTelemetryEnabled && remoteTelemetryUrls.length > 0) {
-            startPlayerPolling();
-        } else {
-            stopPlayerPolling();
-            renderPlayersOnMap();
-            renderPlayersOnHeroMap();
-        }
+        stopPlayerPolling();
+        renderPlayersOnMap();
+        renderPlayersOnHeroMap();
     } else {
         startPlayerPolling();
     }
@@ -2852,7 +2890,6 @@ async function fetchPlayersForMap() {
         renderPlayersOnMap();
         renderPlayersOnHeroMap();
         updateTruckersMpToggle();
-        void fetchRemoteTelemetryPlayers();
         return;
     }
 
@@ -2891,7 +2928,6 @@ async function fetchPlayersForMap() {
     updateTruckersMpToggle();
     renderPlayersOnMap();
     renderPlayersOnHeroMap();
-    void fetchRemoteTelemetryPlayers();
 }
 
 function renderPlayersOnMap() {
@@ -3041,7 +3077,7 @@ function renderPlayersOnHeroMap() {
 }
 
 function startPlayerPolling() {
-    if (!playersOverlayEnabled && (!remoteTelemetryEnabled || remoteTelemetryUrls.length === 0)) {
+    if (!playersOverlayEnabled) {
         stopPlayerPolling();
         return;
     }
@@ -3267,8 +3303,8 @@ function renderTelemetry(payload) {
 }
 
 async function updateTelemetry() {
-    if (telemetryRequestInFlight || playersFetchInFlight || remoteTelemetryFetchPromise) {
-        scheduleTelemetryUpdate(Math.min(refreshIntervalMs, 100));
+    if (telemetryRequestInFlight) {
+        scheduleTelemetryUpdate(refreshIntervalMs);
         return;
     }
 
@@ -3497,7 +3533,7 @@ if (elements.konvoyServerForm) {
         if (playersOverlayEnabled) {
             await fetchPlayersForMap();
         } else if (remoteTelemetryEnabled && remoteTelemetryUrls.length > 0) {
-            startPlayerPolling();
+            startRemoteTelemetryPolling(true);
         } else {
             remoteTelemetryPlayers = [];
             renderPlayersOnMap();
@@ -3532,6 +3568,8 @@ window.addEventListener("beforeunload", () => {
     if (playersFetchTimer !== null) {
         window.clearInterval(playersFetchTimer);
     }
+
+    stopRemoteTelemetryPolling();
 
     telemetryAbortController?.abort();
 });
@@ -3571,4 +3609,5 @@ startTelemetryPolling();
 updateMapModeLabel();
 initializeTileMap();
 startPlayerPolling();
+startRemoteTelemetryPolling();
 updateMapInteractionHints();

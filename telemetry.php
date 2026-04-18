@@ -272,45 +272,107 @@ function fetch_telemetry_data($telemetry_url = TELEMETRY_URL, &$source = null)
     return [];
 }
 
-function telemetry_fetch_json_url(string $url, ?array &$source = null): ?array
+function telemetry_remote_request_timeout_ms(): int
 {
-    $source = [
-        'statusCode' => null,
-        'error' => null,
-    ];
+    return min((int) dashboard_config_value('telemetry.requestTimeoutMs', 4500), 2000);
+}
 
-    $timeoutMs = min((int) dashboard_config_value('telemetry.requestTimeoutMs', 4500), 2000);
-    $timeoutSeconds = max(1.0, $timeoutMs / 1000);
-    $context = stream_context_create([
-        'http' => [
-            'timeout' => $timeoutSeconds,
-            'header' => "Accept: application/json\r\nUser-Agent: ETS2WebDashboard/1.0\r\n",
-            'ignore_errors' => true,
-        ],
+function telemetry_create_json_curl_handle(string $url, int $timeoutMs)
+{
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT_MS => min(1000, $timeoutMs),
+        CURLOPT_TIMEOUT_MS => $timeoutMs,
+        CURLOPT_USERAGENT => 'ETS2WebDashboard/1.0',
+        CURLOPT_HTTPHEADER => ['Accept: application/json'],
     ]);
 
-    $payload = @file_get_contents($url, false, $context);
-    $responseHeaders = $http_response_header ?? [];
-    $statusCode = telemetry_http_status_code(is_array($responseHeaders) ? $responseHeaders : []);
-    $source['statusCode'] = $statusCode;
+    return $ch;
+}
 
-    if ($payload === false) {
-        $source['error'] = 'Unable to reach telemetry URL';
+function telemetry_fetch_json_urls(array $urls): array
+{
+    $timeoutMs = telemetry_remote_request_timeout_ms();
+    $mh = curl_multi_init();
+    $handles = [];
+    $results = [];
+
+    foreach ($urls as $url) {
+        $ch = telemetry_create_json_curl_handle($url, $timeoutMs);
+        $key = (int) $ch;
+        $handles[$key] = [
+            'handle' => $ch,
+            'url' => $url,
+        ];
+        $results[$url] = [
+            'payload' => null,
+            'source' => [
+                'statusCode' => null,
+                'error' => null,
+            ],
+        ];
+        curl_multi_add_handle($mh, $ch);
+    }
+
+    do {
+        $status = curl_multi_exec($mh, $running);
+        if ($running > 0) {
+            $selected = curl_multi_select($mh, 0.2);
+            if ($selected === -1) {
+                usleep(10000);
+            }
+        }
+    } while ($running > 0 && $status === CURLM_OK);
+
+    foreach ($handles as $entry) {
+        $ch = $entry['handle'];
+        $url = $entry['url'];
+        $payload = curl_multi_getcontent($ch);
+        $errno = curl_errno($ch);
+        $error = curl_error($ch);
+        $statusCode = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $results[$url]['source']['statusCode'] = $statusCode > 0 ? $statusCode : null;
+
+        if ($payload === false || $errno !== 0) {
+            $results[$url]['source']['error'] = 'Unable to reach telemetry URL' . ($error !== '' ? ': ' . $error : '');
+        } elseif ($statusCode >= 200 && $statusCode < 300) {
+            $decoded = json_decode($payload, true);
+            if (is_array($decoded)) {
+                $results[$url]['payload'] = $decoded;
+            } else {
+                $results[$url]['source']['error'] = 'Telemetry URL returned invalid JSON';
+            }
+        } else {
+            $results[$url]['source']['error'] = 'Telemetry URL returned non-success status';
+        }
+
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+
+    curl_multi_close($mh);
+
+    return $results;
+}
+
+function telemetry_fetch_json_url(string $url, ?array &$source = null): ?array
+{
+    $results = telemetry_fetch_json_urls([$url]);
+    $result = $results[$url] ?? [
+        'payload' => null,
+        'source' => [
+            'statusCode' => null,
+            'error' => 'Unable to reach telemetry URL',
+        ],
+    ];
+
+    $source = $result['source'];
+    if (!is_array($result['payload'])) {
         return null;
     }
 
-    if ($statusCode !== null && ($statusCode < 200 || $statusCode >= 300)) {
-        $source['error'] = 'Telemetry URL returned non-success status';
-        return null;
-    }
-
-    $decoded = json_decode($payload, true);
-    if (!is_array($decoded)) {
-        $source['error'] = 'Telemetry URL returned invalid JSON';
-        return null;
-    }
-
-    return $decoded;
+    return $result['payload'];
 }
 
 function telemetry_parse_remote_urls(string $raw): array
@@ -1497,9 +1559,12 @@ if (
     $players = [];
     $errors = [];
 
+    $remoteResults = telemetry_fetch_json_urls($urls);
+
     foreach ($urls as $url) {
-        $source = null;
-        $payload = telemetry_fetch_json_url($url, $source);
+        $result = $remoteResults[$url] ?? null;
+        $source = is_array($result['source'] ?? null) ? $result['source'] : ['error' => 'Remote telemetry unavailable'];
+        $payload = is_array($result['payload'] ?? null) ? $result['payload'] : null;
         if (!is_array($payload)) {
             $errors[] = [
                 'url' => $url,
