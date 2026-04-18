@@ -94,6 +94,8 @@ $json_flags = JSON_UNESCAPED_SLASHES
 </head>
 
 <body>
+    <?php
+    ?>
     <noscript>
         <p>This dashboard requires JavaScript to render live telemetry and map updates.</p>
     </noscript>
@@ -169,6 +171,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                 <div class="hero-map-stage" id="hero-map-stage" tabindex="0" aria-label="Hero map, use plus or minus to zoom and C to center">
                     <div class="hero-map-tiles" id="hero-map-tiles"></div>
                     <img class="hero-map-fallback" id="hero-map-fallback" src="map-ets2-preview.jpg" alt="Static ETS2 world map">
+                    <div class="hero-map-players" id="hero-map-players"></div>
                     <div class="hero-map-marker" id="hero-map-marker">
                         <span class="hero-map-marker-arrow" aria-hidden="true"></span>
                         <span class="hero-map-marker-core"></span>

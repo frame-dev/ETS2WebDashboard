@@ -124,6 +124,7 @@ const elements = {
     heroMapTiles: document.getElementById("hero-map-tiles"),
     heroMapFallback: document.getElementById("hero-map-fallback"),
     heroMapMarker: document.getElementById("hero-map-marker"),
+    heroMapPlayers: document.getElementById("hero-map-players"),
     heroMapCenter: document.getElementById("hero-map-center"),
     heroMapShortcuts: document.getElementById("hero-map-shortcuts"),
     heroMapJobIncome: document.getElementById("hero-map-job-income"),
@@ -143,6 +144,7 @@ const elements = {
     ets2MapTiles: document.getElementById("ets2-map-tiles"),
     ets2MapFallback: document.getElementById("ets2-map-fallback"),
     ets2MapMarker: document.getElementById("ets2-map-marker"),
+    ets2MapPlayers: document.getElementById("ets2-map-players"),
     ets2MapLabel: document.getElementById("ets2-map-label"),
     ets2MapMode: document.getElementById("ets2-map-mode"),
     ets2MapCenter: document.getElementById("ets2-map-center"),
@@ -198,6 +200,12 @@ let hasLoadedMapPreferences = false;
 let activeMapTarget = "world";
 let telemetryConsecutiveFailures = 0;
 let telemetryLastSourceType = "upstream";
+let playersFetchTimer = null;
+let playersFetchInFlight = false;
+let playersData = [];
+const playersRefreshMs = 3000;
+const playersRadiusDefault = 5500;
+const playersServerDefault = 50;
 let speedRingPeakKph = 0;
 let speedRingPreviousKph = null;
 let previousJobFinishedState = false;
@@ -2443,6 +2451,174 @@ function renderWorld(data) {
     }
 }
 
+async function fetchPlayersForMap() {
+    if (playersFetchInFlight || !latestTelemetryData) {
+        return;
+    }
+
+    const truck = latestTelemetryData.truck || {};
+    const x = getNumber(truck.placement?.x);
+    const z = getNumber(truck.placement?.z);
+
+    if (x === null || z === null) {
+        playersData = [];
+        renderPlayersOnMap();
+        return;
+    }
+
+    const radius = playersRadiusDefault;
+    const server = playersServerDefault;
+    const x1 = Math.round(x - radius);
+    const x2 = Math.round(x + radius);
+    const y1 = Math.round(z + radius);
+    const y2 = Math.round(z - radius);
+
+    const url = `telemetry.php?format=players&x1=${x1}&y1=${y1}&x2=${x2}&y2=${y2}&server=${server}`;
+
+    playersFetchInFlight = true;
+    try {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) {
+            playersData = [];
+            return;
+        }
+        const json = await response.json();
+        if (json.Success && Array.isArray(json.Data)) {
+            playersData = json.Data;
+        } else {
+            playersData = [];
+        }
+    } catch {
+        playersData = [];
+    } finally {
+        playersFetchInFlight = false;
+    }
+
+    renderPlayersOnMap();
+    renderPlayersOnHeroMap();
+}
+
+function renderPlayersOnMap() {
+    if (!elements.ets2MapPlayers || !tileMapState.initialized || !tileMapState.config || !tileMapState.lastView) {
+        return;
+    }
+
+    const view = tileMapState.lastView;
+    const container = elements.ets2MapPlayers;
+    const existingByMpId = new Map();
+
+    for (const node of Array.from(container.children)) {
+        const mpId = node.dataset.mpId;
+        if (mpId) {
+            existingByMpId.set(mpId, node);
+        }
+    }
+
+    const usedMpIds = new Set();
+
+    for (const player of playersData) {
+        const px = getNumber(player.X);
+        const pz = getNumber(player.Y);
+        if (px === null || pz === null) {
+            continue;
+        }
+
+        const mapPixels = gameCoordsToTilePixels(px, pz, tileMapState.config);
+        if (!mapPixels) {
+            continue;
+        }
+
+        const screenX = (mapPixels.pixelX - view.viewLeft) / view.resolution;
+        const screenY = (mapPixels.pixelY - view.viewTop) / view.resolution;
+
+        const mpId = String(player.MpId || player.PlayerId || `${px}_${pz}`);
+        usedMpIds.add(mpId);
+
+        let node = existingByMpId.get(mpId);
+        if (!node) {
+            node = document.createElement("div");
+            node.className = "ets2-map-player";
+            node.dataset.mpId = mpId;
+            node.innerHTML = '<span class="ets2-map-player-dot"></span><span class="ets2-map-player-name"></span>';
+            container.appendChild(node);
+        }
+
+        node.style.left = `${screenX}px`;
+        node.style.top = `${screenY}px`;
+        node.querySelector(".ets2-map-player-name").textContent = player.Name || "Player";
+        node.title = player.Name || "Player";
+    }
+
+    for (const [mpId, node] of existingByMpId) {
+        if (!usedMpIds.has(mpId)) {
+            node.remove();
+        }
+    }
+}
+
+function renderPlayersOnHeroMap() {
+    if (!elements.heroMapPlayers || !tileMapState.initialized || !tileMapState.config || !heroMapState.lastView) {
+        return;
+    }
+
+    const view = heroMapState.lastView;
+    const container = elements.heroMapPlayers;
+    const existingByMpId = new Map();
+
+    for (const node of Array.from(container.children)) {
+        const mpId = node.dataset.mpId;
+        if (mpId) {
+            existingByMpId.set(mpId, node);
+        }
+    }
+
+    const usedMpIds = new Set();
+
+    for (const player of playersData) {
+        const px = getNumber(player.X);
+        const pz = getNumber(player.Y);
+        if (px === null || pz === null) {
+            continue;
+        }
+
+        const mapPixels = gameCoordsToTilePixels(px, pz, tileMapState.config);
+        if (!mapPixels) {
+            continue;
+        }
+
+        const screenX = (mapPixels.pixelX - view.viewLeft) / view.resolution;
+        const screenY = (mapPixels.pixelY - view.viewTop) / view.resolution;
+
+        const mpId = String(player.MpId || player.PlayerId || `${px}_${pz}`);
+        usedMpIds.add(mpId);
+
+        let node = existingByMpId.get(mpId);
+        if (!node) {
+            node = document.createElement("div");
+            node.className = "hero-map-player";
+            node.dataset.mpId = mpId;
+            node.innerHTML = '<span class="hero-map-player-dot"></span><span class="hero-map-player-name"></span>';
+            container.appendChild(node);
+        }
+
+        node.style.left = `${screenX}px`;
+        node.style.top = `${screenY}px`;
+        node.querySelector(".hero-map-player-name").textContent = player.Name || "Player";
+        node.title = player.Name || "Player";
+    }
+
+    for (const [mpId, node] of existingByMpId) {
+        if (!usedMpIds.has(mpId)) {
+            node.remove();
+        }
+    }
+}
+
+function startPlayerPolling() {
+    fetchPlayersForMap();
+    playersFetchTimer = window.setInterval(fetchPlayersForMap, playersRefreshMs);
+}
+
 function renderMap(data) {
     const truck = data.truck || {};
     const job = data.job || {};
@@ -2591,6 +2767,9 @@ function renderMap(data) {
         elements.heroMapMarker.style.top = `${zRatio * 100}%`;
         elements.heroMapMarker.style.setProperty("--hero-map-marker-heading", `${markerHeadingDeg}deg`);
     }
+
+    renderPlayersOnMap();
+    renderPlayersOnHeroMap();
 }
 
 function renderEvents(data) {
@@ -2879,6 +3058,10 @@ window.addEventListener("beforeunload", () => {
         }
     }
 
+    if (playersFetchTimer !== null) {
+        window.clearInterval(playersFetchTimer);
+    }
+
     telemetryAbortController?.abort();
 });
 
@@ -2912,4 +3095,5 @@ startTelemetryPolling();
 
 updateMapModeLabel();
 initializeTileMap();
+startPlayerPolling();
 updateMapInteractionHints();

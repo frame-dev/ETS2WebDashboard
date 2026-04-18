@@ -66,6 +66,32 @@ if not exist "%PHP_ROOT%\php.ini" (
     )
 )
 
+REM Enable extensions required for HTTPS requests (openssl, curl) and set extension_dir
+REM Also download Mozilla CA bundle and configure curl.cainfo / openssl.cafile
+if exist "%PHP_ROOT%\php.ini" (
+    if not exist "%PHP_ROOT%\extras\ssl" mkdir "%PHP_ROOT%\extras\ssl"
+    if not exist "%PHP_ROOT%\extras\ssl\cacert.pem" (
+        echo Downloading Mozilla CA certificate bundle...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+            "$ProgressPreference = 'SilentlyContinue';" ^
+            "$curl = Get-Command curl.exe -ErrorAction SilentlyContinue;" ^
+            "if ($curl) { & $curl.Source '--fail' '--silent' '--show-error' '--location' '--output' '%PHP_ROOT%\extras\ssl\cacert.pem' 'https://curl.se/ca/cacert.pem' }" ^
+            "else { Invoke-WebRequest -UseBasicParsing -Uri 'https://curl.se/ca/cacert.pem' -OutFile '%PHP_ROOT%\extras\ssl\cacert.pem' -ErrorAction Stop }"
+    )
+    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+        "$ini = '%PHP_ROOT%\php.ini';" ^
+        "$ca = '%PHP_ROOT%\extras\ssl\cacert.pem';" ^
+        "$c = Get-Content $ini -Raw;" ^
+        "if ($c -match '(?m)^;extension_dir\s*=\s*\"ext\"') { $c = $c -replace '(?m)^;extension_dir\s*=\s*\"ext\"', 'extension_dir = \"ext\"' };" ^
+        "if ($c -match '(?m)^;extension=openssl') { $c = $c -replace '(?m)^;extension=openssl', 'extension=openssl' };" ^
+        "if ($c -match '(?m)^;extension=curl') { $c = $c -replace '(?m)^;extension=curl', 'extension=curl' };" ^
+        "if (Test-Path $ca) {" ^
+        "  $c = $c -replace '(?m)^;curl\.cainfo\s*=.*$', ('curl.cainfo = \"' + $ca + '\"');" ^
+        "  $c = $c -replace '(?m)^;openssl\.cafile\s*=.*$', ('openssl.cafile = \"' + $ca + '\"');" ^
+        "}" ^
+        "Set-Content $ini $c -NoNewline"
+)
+
 "%PHP_EXE%" -v >nul 2>&1
 if errorlevel 1 (
     echo Portable PHP was downloaded, but it could not start.

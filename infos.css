@@ -410,6 +410,47 @@ button:focus-visible,
         0 0 24px rgba(84, 239, 199, 0.4);
 }
 
+.ets2-map-players {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.ets2-map-player {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    pointer-events: auto;
+    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: default;
+}
+
+.ets2-map-player-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    background: #ff7043;
+    box-shadow: 0 0 6px rgba(255, 112, 67, 0.5);
+}
+
+.ets2-map-player-name {
+    margin-top: 2px;
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(6, 13, 22, 0.7);
+    padding: 1px 5px;
+    border-radius: 4px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .ets2-map-toolbar {
     position: absolute;
     left: 14px;

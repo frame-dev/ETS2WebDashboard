@@ -135,6 +135,7 @@
                         <div class="ets2-map-stage" id="ets2-map-stage" tabindex="0" aria-label="World map, use plus or minus to zoom and C to center">
                             <div class="ets2-map-tiles" id="ets2-map-tiles"></div>
                             <img class="ets2-map-image ets2-map-fallback" id="ets2-map-fallback" src="map-ets2-preview.jpg" alt="Static ETS2 world map">
+                            <div class="ets2-map-players" id="ets2-map-players"></div>
                         </div>
                         <div class="ets2-map-marker" id="ets2-map-marker">
                             <span class="ets2-map-marker-core"></span>
