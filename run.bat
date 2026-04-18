@@ -3,7 +3,7 @@ setlocal EnableExtensions
 
 cd /d "%~dp0"
 
-if not defined HOST set "HOST=localhost"
+if not defined HOST set "HOST=0.0.0.0"
 if not defined PORT set "PORT=8000"
 if not defined PHP_VERSION set "PHP_VERSION=8.3"
 for /f "tokens=1,2 delims=." %%A in ("%PHP_VERSION%") do set "PHP_SERIES=%%A.%%B"

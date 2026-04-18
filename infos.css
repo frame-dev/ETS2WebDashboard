@@ -454,6 +454,10 @@ button:focus-visible,
     font: inherit;
     font-weight: 700;
     cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
     transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 

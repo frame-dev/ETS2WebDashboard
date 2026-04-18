@@ -2730,6 +2730,32 @@ function startTelemetryPolling() {
     updateTelemetry();
 }
 
+function bindMapControlPress(button, onPress) {
+    if (!(button instanceof HTMLButtonElement) || typeof onPress !== "function") {
+        return;
+    }
+
+    let lastPointerActivationAt = 0;
+
+    button.addEventListener("pointerup", (event) => {
+        if (event.pointerType === "mouse") {
+            return;
+        }
+
+        event.preventDefault();
+        lastPointerActivationAt = Date.now();
+        onPress(event);
+    });
+
+    button.addEventListener("click", (event) => {
+        if ((Date.now() - lastPointerActivationAt) < 700) {
+            return;
+        }
+
+        onPress(event);
+    });
+}
+
 if (tabsRoot) {
     tabsRoot.addEventListener("click", (event) => {
         const control = event.target instanceof Element ? event.target.closest("[data-tab]") : null;
@@ -2763,7 +2789,7 @@ if (tabsRoot) {
 }
 
 mapZoomButtons.forEach((button) => {
-    button.addEventListener("click", () => {
+    bindMapControlPress(button, () => {
         setActiveMapTarget("world");
         const delta = button.dataset.mapZoom === "in" ? 1 : -1;
         applyWorldMapZoom(delta);
@@ -2771,7 +2797,7 @@ mapZoomButtons.forEach((button) => {
 });
 
 heroMapZoomButtons.forEach((button) => {
-    button.addEventListener("click", () => {
+    bindMapControlPress(button, () => {
         setActiveMapTarget("hero");
         const delta = button.dataset.heroMapZoom === "in" ? 1 : -1;
         applyHeroMapZoom(delta);
@@ -2817,14 +2843,14 @@ if (elements.heroMapStage) {
 }
 
 if (elements.ets2MapCenter) {
-    elements.ets2MapCenter.addEventListener("click", () => {
+    bindMapControlPress(elements.ets2MapCenter, () => {
         setActiveMapTarget("world");
         centerWorldMap();
     });
 }
 
 if (elements.heroMapCenter) {
-    elements.heroMapCenter.addEventListener("click", () => {
+    bindMapControlPress(elements.heroMapCenter, () => {
         setActiveMapTarget("hero");
         centerHeroMap(true);
     });

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-HOST="${HOST:-localhost}"
+HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
 PHP_VERSION="${PHP_VERSION:-8.3.29}"
 PHP_SHA256="${PHP_SHA256:-8565fa8733c640b60da5ab4944bf2d4081f859915b39e29b3af26cf23443ed97}"
