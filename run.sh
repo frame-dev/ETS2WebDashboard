@@ -6,106 +6,98 @@ cd "$SCRIPT_DIR"
 
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8000}"
-PHP_VERSION="${PHP_VERSION:-8.3.29}"
-PHP_SHA256="${PHP_SHA256:-8565fa8733c640b60da5ab4944bf2d4081f859915b39e29b3af26cf23443ed97}"
 
 RUNTIME_DIR="$SCRIPT_DIR/.runtime"
-PHP_ROOT="$RUNTIME_DIR/php"
-PHP_BIN="$PHP_ROOT/bin/php"
-SRC_ARCHIVE="$RUNTIME_DIR/php-$PHP_VERSION.tar.gz"
-SRC_DIR="$RUNTIME_DIR/src/php-$PHP_VERSION"
-PHP_URL="https://www.php.net/distributions/php-$PHP_VERSION.tar.gz"
+LOCAL_PHP_BIN="$RUNTIME_DIR/php/bin/php"
+CONFIG_LOCAL="$SCRIPT_DIR/config.local.php"
+CONFIG_LOCAL_EXAMPLE="$SCRIPT_DIR/config.local.example.php"
 
-need_cmd() {
-    command -v "$1" >/dev/null 2>&1 || {
-        echo "Missing required command: $1" >&2
-        exit 1
-    }
+mkdir -p "$RUNTIME_DIR" "$SCRIPT_DIR/tmp" "$SCRIPT_DIR/snapshots"
+
+print_install_help() {
+    cat >&2 <<'EOF'
+No suitable PHP runtime was found for this project.
+
+This dashboard needs:
+- PHP 8.0 or newer
+- HTTPS stream support (`https` wrapper, usually from OpenSSL)
+- `curl` extension enabled
+
+Common install commands:
+- macOS (Homebrew): brew install php
+- Ubuntu/Debian: sudo apt install php-cli php-curl php-xml php-mbstring openssl
+- Fedora: sudo dnf install php-cli php-curl php-xml php-mbstring openssl
+
+You can also point the launcher at a specific binary:
+- PHP_BIN=/path/to/php ./run.sh
+EOF
 }
 
-download_file() {
-    local url="$1"
-    local output="$2"
+php_meets_requirements() {
+    local php_bin="$1"
 
-    if command -v curl >/dev/null 2>&1; then
-        curl -fL "$url" -o "$output"
+    "$php_bin" -r '
+        if (PHP_VERSION_ID < 80000) {
+            fwrite(STDERR, "PHP 8.0+ is required.\n");
+            exit(1);
+        }
+
+        if (!function_exists("curl_init")) {
+            fwrite(STDERR, "Missing required PHP curl extension.\n");
+            exit(1);
+        }
+
+        if (!in_array("https", stream_get_wrappers(), true)) {
+            fwrite(STDERR, "Missing HTTPS stream wrapper (usually OpenSSL).\n");
+            exit(1);
+        }
+
+        exit(0);
+    ' >/dev/null
+}
+
+discover_php() {
+    if [[ -n "${PHP_BIN:-}" && -x "${PHP_BIN:-}" ]]; then
+        printf '%s\n' "$PHP_BIN"
         return
     fi
 
-    if command -v wget >/dev/null 2>&1; then
-        wget -O "$output" "$url"
+    if [[ -x "$LOCAL_PHP_BIN" ]]; then
+        printf '%s\n' "$LOCAL_PHP_BIN"
         return
     fi
 
-    echo "Missing required command: curl or wget" >&2
-    exit 1
-}
-
-verify_sha256() {
-    local file="$1"
-    local expected="$2"
-    local actual=""
-
-    if command -v sha256sum >/dev/null 2>&1; then
-        actual="$(sha256sum "$file" | awk '{print $1}')"
-    elif command -v shasum >/dev/null 2>&1; then
-        actual="$(shasum -a 256 "$file" | awk '{print $1}')"
-    else
-        echo "Warning: sha256sum/shasum not found, skipping checksum verification." >&2
+    if command -v php >/dev/null 2>&1; then
+        command -v php
         return
     fi
 
-    if [[ "$actual" != "$expected" ]]; then
-        echo "Checksum verification failed for $file" >&2
-        echo "Expected: $expected" >&2
-        echo "Actual:   $actual" >&2
-        exit 1
-    fi
+    printf '%s\n' ""
 }
 
-build_local_php() {
-    need_cmd tar
-    need_cmd make
+PHP_CMD="$(discover_php)"
 
-    if ! command -v cc >/dev/null 2>&1 && ! command -v gcc >/dev/null 2>&1 && ! command -v clang >/dev/null 2>&1; then
-        echo "A C compiler is required to build PHP locally." >&2
-        echo "Install Xcode Command Line Tools on macOS or build-essential on Linux." >&2
-        exit 1
-    fi
-
-    mkdir -p "$RUNTIME_DIR/src"
-
-    echo "Downloading PHP $PHP_VERSION source..."
-    download_file "$PHP_URL" "$SRC_ARCHIVE"
-    verify_sha256 "$SRC_ARCHIVE" "$PHP_SHA256"
-
-    rm -rf "$SRC_DIR"
-    mkdir -p "$SRC_DIR"
-    tar -xzf "$SRC_ARCHIVE" -C "$RUNTIME_DIR/src"
-
-    echo "Building local PHP runtime in $PHP_ROOT ..."
-    rm -rf "$PHP_ROOT"
-    mkdir -p "$PHP_ROOT"
-
-    (
-        cd "$SRC_DIR"
-        ./configure \
-            --prefix="$PHP_ROOT" \
-            --disable-all \
-            --enable-cli
-        make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
-        make install
-    )
-}
-
-if [[ ! -x "$PHP_BIN" ]]; then
-    build_local_php
-fi
-
-if [[ ! -x "$PHP_BIN" ]]; then
-    echo "Local PHP runtime was not created successfully." >&2
+if [[ -z "$PHP_CMD" ]]; then
+    print_install_help
     exit 1
 fi
 
+if ! php_meets_requirements "$PHP_CMD"; then
+    cat >&2 <<EOF
+The PHP runtime at:
+  $PHP_CMD
+
+does not meet this project's requirements.
+EOF
+    print_install_help
+    exit 1
+fi
+
+if [[ ! -f "$CONFIG_LOCAL" && -f "$CONFIG_LOCAL_EXAMPLE" ]]; then
+    cp "$CONFIG_LOCAL_EXAMPLE" "$CONFIG_LOCAL"
+    echo "Created config.local.php from config.local.example.php"
+fi
+
+echo "Using PHP runtime: $PHP_CMD"
 echo "Starting ETS2 Web Dashboard on http://$HOST:$PORT/"
-exec "$PHP_BIN" -S "$HOST:$PORT" router.php
+exec "$PHP_CMD" -S "$HOST:$PORT" router.php
