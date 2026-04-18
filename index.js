@@ -1,17 +1,23 @@
 const config = window.dashboardConfig || {};
+
+function readNumberConfig(value, fallback) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 const telemetryEndpoint = config.telemetryEndpoint || "telemetry.php?format=json";
-const refreshIntervalMs = Number(config.refreshIntervalMs) || 5000;
-const telemetryRequestTimeoutMs = Number(config.telemetryRequestTimeoutMs) || Math.max(2500, refreshIntervalMs - 500);
+const refreshIntervalMs = readNumberConfig(config.refreshIntervalMs, 250);
+const telemetryRequestTimeoutMs = readNumberConfig(config.telemetryRequestTimeoutMs, Math.max(2500, refreshIntervalMs - 500));
 const telemetryPollingConfig = config.telemetryPolling || {};
 const speedRingConfig = config.speedRing || {};
-const speedRingMaxDisplayKph = Number(speedRingConfig.maxDisplayKph) || 130;
-const speedRingOverspeedToleranceKph = Number(speedRingConfig.overspeedToleranceKph) || 2;
-const speedRingTrendSensitivityKph = Number(speedRingConfig.trendSensitivityKph) || 0.8;
-const telemetryBackoffStepMs = Number(telemetryPollingConfig.backoffStepMs) || 1000;
-const telemetryMaxBackoffMs = Number(telemetryPollingConfig.maxBackoffMs) || 30000;
-const telemetryHiddenIntervalMs = Number(telemetryPollingConfig.hiddenIntervalMs) || 12000;
-const telemetryMinimumIntervalMs = Math.max(100, Number(telemetryPollingConfig.minimumIntervalMs) || 250);
-const telemetryCacheMultiplier = Math.max(1, Number(telemetryPollingConfig.cacheMultiplier) || 2);
+const speedRingMaxDisplayKph = readNumberConfig(speedRingConfig.maxDisplayKph, 130);
+const speedRingOverspeedToleranceKph = readNumberConfig(speedRingConfig.overspeedToleranceKph, 2);
+const speedRingTrendSensitivityKph = readNumberConfig(speedRingConfig.trendSensitivityKph, 0.8);
+const telemetryBackoffStepMs = Math.max(0, readNumberConfig(telemetryPollingConfig.backoffStepMs, 0));
+const telemetryMaxBackoffMs = Math.max(0, readNumberConfig(telemetryPollingConfig.maxBackoffMs, 250));
+const telemetryHiddenIntervalMs = Math.max(0, readNumberConfig(telemetryPollingConfig.hiddenIntervalMs, 250));
+const telemetryMinimumIntervalMs = Math.max(100, readNumberConfig(telemetryPollingConfig.minimumIntervalMs, 250));
+const telemetryCacheMultiplier = Math.max(1, readNumberConfig(telemetryPollingConfig.cacheMultiplier, 1));
 const activeTabStorageKey = (config.storageKeys && config.storageKeys.activeTab) || "ets2-dashboard-active-tab";
 const mapPreferencesStorageKey = (config.storageKeys && config.storageKeys.mapPreferences) || "ets2-dashboard-map-preferences";
 const tileProxyEndpoint = config.tileProxyEndpoint || "tile-proxy.php";
@@ -212,7 +218,7 @@ let playersOverlayEnabled = true;
 let remoteTelemetryUrls = Array.isArray(config.remoteTelemetryUrls)
     ? normalizeRemoteTelemetryUrls(config.remoteTelemetryUrls.join(", "))
     : [];
-const playersRefreshMs = Math.max(250, Number(config.playersRefreshMs) || 3000);
+const playersRefreshMs = Math.max(250, readNumberConfig(config.playersRefreshMs, 250));
 const playersRadiusDefault = Math.max(1, Number(config.playersRadiusDefault) || 5500);
 const playersServerDefault = Math.max(1, Math.floor(Number(config.playersServerDefault) || 50));
 let speedRingPeakKph = 0;

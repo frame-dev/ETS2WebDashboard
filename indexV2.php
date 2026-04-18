@@ -19,6 +19,7 @@ $design_config = [
     'dangerColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.dangerColor', '#FF7050'), '#FF7050'),
     'fontFamily' => dashboard_sanitize_font_family((string) dashboard_config_value('design.fontFamily', '"Space Grotesk", "Aptos", "Segoe UI", sans-serif'), '"Space Grotesk", "Aptos", "Segoe UI", sans-serif'),
     'fontScale' => (float) dashboard_config_value('design.fontScale', 1.0),
+    'heroMapPlayerFontSizeRem' => (float) dashboard_config_value('design.heroMapPlayerFontSizeRem', 0.95),
     'panelRadiusPx' => (int) dashboard_config_value('design.panelRadiusPx', 28),
     'glassBlurPx' => (int) dashboard_config_value('design.glassBlurPx', 26),
 ];
@@ -65,7 +66,7 @@ $dashboard_config = [
     'refreshIntervalMs' => $refresh_interval_ms,
     'telemetryRequestTimeoutMs' => (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500),
     'remoteTelemetryUrls' => is_array($frontend_config['remoteTelemetryUrls'] ?? null) ? $frontend_config['remoteTelemetryUrls'] : [],
-    'playersRefreshMs' => (int) (($frontend_config['playersRefreshMs'] ?? null) ?? (($frontend_config['players']['refreshMs'] ?? null) ?? 3000)),
+    'playersRefreshMs' => (int) (($frontend_config['playersRefreshMs'] ?? null) ?? (($frontend_config['players']['refreshMs'] ?? null) ?? 250)),
     'playersRadiusDefault' => (int) (($frontend_config['playersRadiusDefault'] ?? null) ?? (($frontend_config['players']['radiusDefault'] ?? null) ?? 5500)),
     'playersServerDefault' => (int) (($frontend_config['playersServerDefault'] ?? null) ?? (($frontend_config['players']['serverDefault'] ?? null) ?? 50)),
     'telemetryPolling' => is_array($frontend_config['telemetryPolling'] ?? null) ? $frontend_config['telemetryPolling'] : [],
@@ -155,7 +156,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                     </div>
                 </div>
                 <span class="cruise-control-speed" id="cruise-control-speed">
-                    <span class="speed-readout-label">Tempomat</span>
+                    <span class="speed-readout-label">Cruise Control</span>
                     <span class="speed-readout-reading">
                         <span class="speed-readout-value" id="tempomat-speed-limit">--</span>
                         <span class="speed-readout-unit">km/h</span>

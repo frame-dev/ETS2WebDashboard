@@ -247,6 +247,7 @@ function settings_import_json_to_form_data(array $currentFormData, array $import
     $currentFormData['design']['dangerColor'] = settings_normalize_color($importedConfig['design']['dangerColor'] ?? $currentFormData['design']['dangerColor'], $currentFormData['design']['dangerColor']);
     $currentFormData['design']['fontFamily'] = dashboard_sanitize_font_family((string) ($importedConfig['design']['fontFamily'] ?? $currentFormData['design']['fontFamily']), $currentFormData['design']['fontFamily']);
     $currentFormData['design']['fontScale'] = dashboard_clamp_float($importedConfig['design']['fontScale'] ?? $currentFormData['design']['fontScale'], $currentFormData['design']['fontScale'], 0.85, 1.4);
+    $currentFormData['design']['heroMapPlayerFontSizeRem'] = dashboard_clamp_float($importedConfig['design']['heroMapPlayerFontSizeRem'] ?? $currentFormData['design']['heroMapPlayerFontSizeRem'], $currentFormData['design']['heroMapPlayerFontSizeRem'], 0.6, 1.4);
     $currentFormData['design']['panelRadiusPx'] = dashboard_clamp_int($importedConfig['design']['panelRadiusPx'] ?? $currentFormData['design']['panelRadiusPx'], $currentFormData['design']['panelRadiusPx'], 16, 40);
     $currentFormData['design']['glassBlurPx'] = dashboard_clamp_int($importedConfig['design']['glassBlurPx'] ?? $currentFormData['design']['glassBlurPx'], $currentFormData['design']['glassBlurPx'], 0, 40);
 
@@ -317,6 +318,7 @@ $designConfig = [
     'dangerColor' => (string) dashboard_config_value('design.dangerColor', '#FF7050'),
     'fontFamily' => (string) dashboard_config_value('design.fontFamily', '"Space Grotesk", "Aptos", "Segoe UI", sans-serif'),
     'fontScale' => (float) dashboard_config_value('design.fontScale', 1.0),
+    'heroMapPlayerFontSizeRem' => (float) dashboard_config_value('design.heroMapPlayerFontSizeRem', 0.95),
     'panelRadiusPx' => (int) dashboard_config_value('design.panelRadiusPx', 28),
     'glassBlurPx' => (int) dashboard_config_value('design.glassBlurPx', 26),
 ];
@@ -351,7 +353,7 @@ $speedRingConfig = [
 $playersConfig = [
     'playersRefreshMs' => (int) dashboard_config_value(
         'frontend.playersRefreshMs',
-        (int) dashboard_config_value('frontend.players.refreshMs', 3000)
+        (int) dashboard_config_value('frontend.players.refreshMs', 250)
     ),
     'playersRadiusDefault' => (int) dashboard_config_value(
         'frontend.playersRadiusDefault',
@@ -363,11 +365,11 @@ $playersConfig = [
     ),
 ];
 $telemetryPollingConfig = [
-    'backoffStepMs' => (int) dashboard_config_value('frontend.telemetryPolling.backoffStepMs', 1000),
-    'maxBackoffMs' => (int) dashboard_config_value('frontend.telemetryPolling.maxBackoffMs', 30000),
-    'hiddenIntervalMs' => (int) dashboard_config_value('frontend.telemetryPolling.hiddenIntervalMs', 12000),
+    'backoffStepMs' => (int) dashboard_config_value('frontend.telemetryPolling.backoffStepMs', 0),
+    'maxBackoffMs' => (int) dashboard_config_value('frontend.telemetryPolling.maxBackoffMs', 250),
+    'hiddenIntervalMs' => (int) dashboard_config_value('frontend.telemetryPolling.hiddenIntervalMs', 250),
     'minimumIntervalMs' => (int) dashboard_config_value('frontend.telemetryPolling.minimumIntervalMs', 250),
-    'cacheMultiplier' => (int) dashboard_config_value('frontend.telemetryPolling.cacheMultiplier', 2),
+    'cacheMultiplier' => (int) dashboard_config_value('frontend.telemetryPolling.cacheMultiplier', 1),
 ];
 $mapDefaultsConfig = [
     'worldZoom' => (int) dashboard_config_value('frontend.mapDefaults.worldZoom', 4),
@@ -508,6 +510,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'dangerColor' => settings_normalize_color($_POST['design_danger_color'] ?? $designConfig['dangerColor'], $designConfig['dangerColor']),
                 'fontFamily' => dashboard_sanitize_font_family((string) ($_POST['design_font_family'] ?? $designConfig['fontFamily']), $designConfig['fontFamily']),
                 'fontScale' => dashboard_clamp_float($_POST['design_font_scale'] ?? $designConfig['fontScale'], $designConfig['fontScale'], 0.85, 1.4),
+                'heroMapPlayerFontSizeRem' => dashboard_clamp_float($_POST['design_hero_map_player_font_size_rem'] ?? $designConfig['heroMapPlayerFontSizeRem'], $designConfig['heroMapPlayerFontSizeRem'], 0.6, 1.4),
                 'panelRadiusPx' => dashboard_clamp_int($_POST['design_panel_radius_px'] ?? $designConfig['panelRadiusPx'], $designConfig['panelRadiusPx'], 16, 40),
                 'glassBlurPx' => dashboard_clamp_int($_POST['design_glass_blur_px'] ?? $designConfig['glassBlurPx'], $designConfig['glassBlurPx'], 0, 40),
             ],
@@ -850,11 +853,16 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                 <span class="hint">Scales the overall interface typography up or down without editing CSS.</span>
                             </div>
                             <div class="field">
+                                <label for="design-hero-map-player-font-size-rem">Map player label size</label>
+                                <input id="design-hero-map-player-font-size-rem" name="design_hero_map_player_font_size_rem" type="number" min="0.6" max="1.4" step="0.05" value="<?php echo htmlspecialchars((string) $formData['design']['heroMapPlayerFontSizeRem'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Controls the font size in <code>rem</code> for the names shown above other-player markers on the hero map.</span>
+                            </div>
+                            <div class="field">
                                 <label for="design-panel-radius-px">Panel roundness</label>
                                 <input id="design-panel-radius-px" name="design_panel_radius_px" type="number" min="16" max="40" step="1" value="<?php echo htmlspecialchars((string) $formData['design']['panelRadiusPx'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">Controls the corner radius used by the main dashboard and settings panels.</span>
                             </div>
-                            <div class="field full">
+                            <div class="field">
                                 <label for="design-glass-blur-px">Glass blur strength</label>
                                 <input id="design-glass-blur-px" name="design_glass_blur_px" type="number" min="0" max="40" step="1" value="<?php echo htmlspecialchars((string) $formData['design']['glassBlurPx'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">Adjusts the backdrop blur used by the glass-style surfaces. Lower values look crisper; higher values look softer.</span>
@@ -994,12 +1002,12 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                             <div class="field full">
                                 <label for="telemetry-polling-hidden-interval-ms">Polling while tab is hidden</label>
                                 <input id="telemetry-polling-hidden-interval-ms" name="telemetry_polling_hidden_interval_ms" type="number" min="0" step="100" value="<?php echo htmlspecialchars((string) $formData['telemetryPolling']['hiddenIntervalMs'], ENT_QUOTES, 'UTF-8'); ?>">
-                                <span class="hint">Reduced polling cadence when the browser tab is not visible.</span>
+                                <span class="hint">Keep this at <code>250</code> if you want hidden-tab polling to stay aligned with the live telemetry cadence.</span>
                             </div>
                             <div class="field">
                                 <label for="frontend-players-refresh-ms">Players refresh interval</label>
                                 <input id="frontend-players-refresh-ms" name="frontend_players_refresh_ms" type="number" min="250" step="250" value="<?php echo htmlspecialchars((string) $formData['players']['playersRefreshMs'], ENT_QUOTES, 'UTF-8'); ?>">
-                                <span class="hint">How often the frontend refreshes nearby player markers.</span>
+                                <span class="hint">Set to <code>250</code> to keep player lookups in sync with the telemetry refresh interval.</span>
                             </div>
                             <div class="field">
                                 <label for="frontend-players-radius-default">Players radius default</label>

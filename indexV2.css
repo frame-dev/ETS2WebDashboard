@@ -1083,13 +1083,13 @@ noscript p {
 
 .hero-map-player-name {
     margin-top: 2px;
-    font-size: 0.65rem;
+    font-size: var(--hero-map-player-font-size, 0.95rem);
     color: rgba(255, 255, 255, 0.85);
     background: rgba(6, 13, 22, 0.7);
     padding: 1px 5px;
     border-radius: 4px;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-    max-width: 100px;
+    max-width: fit-content;
     overflow: hidden;
     text-overflow: ellipsis;
 }

@@ -20,6 +20,7 @@ function dashboard_config_defaults(): array
             'dangerColor' => '#FF7050',
             'fontFamily' => '"Space Grotesk", "Aptos", "Segoe UI", sans-serif',
             'fontScale' => 1.0,
+            'heroMapPlayerFontSizeRem' => 0.95,
             'panelRadiusPx' => 28,
             'glassBlurPx' => 26,
         ],
@@ -45,15 +46,15 @@ function dashboard_config_defaults(): array
         'frontend' => [
             'telemetryEndpoint' => 'telemetry.php?format=json',
             'remoteTelemetryUrls' => [],
-            'playersRefreshMs' => 3000,
+            'playersRefreshMs' => 250,
             'playersRadiusDefault' => 5500,
             'playersServerDefault' => 50,
             'telemetryPolling' => [
-                'backoffStepMs' => 1000,
-                'maxBackoffMs' => 30000,
-                'hiddenIntervalMs' => 12000,
+                'backoffStepMs' => 0,
+                'maxBackoffMs' => 250,
+                'hiddenIntervalMs' => 250,
                 'minimumIntervalMs' => 250,
-                'cacheMultiplier' => 2,
+                'cacheMultiplier' => 1,
             ],
             'speedRing' => [
                 'maxDisplayKph' => 130,
@@ -190,6 +191,7 @@ function dashboard_design_theme_variables(array $design): array
 {
     $defaultFontFamily = '"Space Grotesk", "Aptos", "Segoe UI", sans-serif';
     $fontScale = dashboard_clamp_float($design['fontScale'] ?? 1.0, 1.0, 0.85, 1.4);
+    $heroMapPlayerFontSizeRem = dashboard_clamp_float($design['heroMapPlayerFontSizeRem'] ?? 0.95, 0.95, 0.6, 1.4);
     $panelRadiusPx = dashboard_clamp_int($design['panelRadiusPx'] ?? 28, 28, 16, 40);
     $glassBlurPx = dashboard_clamp_int($design['glassBlurPx'] ?? 26, 26, 0, 40);
 
@@ -203,6 +205,7 @@ function dashboard_design_theme_variables(array $design): array
         '--ring-color-off' => dashboard_sanitize_hex_color((string) ($design['dangerColor'] ?? '#FF7050'), '#FF7050'),
         '--ui-font-family' => dashboard_sanitize_font_family((string) ($design['fontFamily'] ?? $defaultFontFamily), $defaultFontFamily),
         '--ui-font-scale' => rtrim(rtrim(number_format($fontScale, 2, '.', ''), '0'), '.'),
+        '--hero-map-player-font-size' => rtrim(rtrim(number_format($heroMapPlayerFontSizeRem, 2, '.', ''), '0'), '.') . 'rem',
         '--panel-radius-sm' => (string) max(10, $panelRadiusPx - 10) . 'px',
         '--panel-radius-md' => (string) max(14, $panelRadiusPx - 4) . 'px',
         '--panel-radius-base' => (string) $panelRadiusPx . 'px',
@@ -257,6 +260,12 @@ function dashboard_config(): array
         $config['design']['fontScale'] ?? 1.0,
         1.0,
         0.85,
+        1.4
+    );
+    $config['design']['heroMapPlayerFontSizeRem'] = dashboard_clamp_float(
+        $config['design']['heroMapPlayerFontSizeRem'] ?? 0.95,
+        0.95,
+        0.6,
         1.4
     );
     $config['design']['panelRadiusPx'] = dashboard_clamp_int(

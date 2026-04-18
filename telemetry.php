@@ -363,10 +363,11 @@ function telemetry_build_remote_player(array $data, string $sourceUrl): ?array
     $licensePlate = trim((string) get_telemetry_value($data, 'truck.licensePlate', ''));
     $make = trim((string) get_telemetry_value($data, 'truck.make', ''));
     $model = trim((string) get_telemetry_value($data, 'truck.model', ''));
-    $name = $licensePlate;
+    $speed = get_telemetry_value($data, 'truck.speed');
+    $name = $licensePlate . " " . (is_numeric($speed) ? sprintf('%.1f km/h', $speed) : 'N/A');
 
     if ($name === '') {
-        $name = trim($make . ' ' . $model);
+        $name = trim($make . ' ' . $model) . ($speed !== null && is_numeric($speed) ? sprintf(' (%.1f km/h)', $speed) : '');
     }
 
     if ($name === '') {
