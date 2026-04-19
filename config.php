@@ -26,20 +26,25 @@ function dashboard_config_defaults(): array
         ],
         'telemetry' => [
             'upstreamUrl' => 'http://127.0.0.1:31377/api/ets2/telemetry',
+            'atsUpstreamUrl' => 'http://127.0.0.1:31377/api/ets2/telemetry',
             'refreshIntervalMs' => 250,
             'requestTimeoutMs' => 4500,
             'jsonPrettyPrint' => true,
             'cacheEnabled' => true,
             'cacheTtlMs' => 10000,
             'cacheFile' => __DIR__ . '/tmp/telemetry-cache.json',
+            'atsCacheFile' => __DIR__ . '/tmp/telemetry-ats-cache.json',
         ],
         'snapshots' => [
             'enabled' => false,
             'intervalMs' => 60000,
             'directory' => __DIR__ . '/snapshots',
+            'atsDirectory' => __DIR__ . '/snapshots/ats',
             'stateFile' => __DIR__ . '/tmp/snapshot-state.json',
+            'atsStateFile' => __DIR__ . '/tmp/snapshot-ats-state.json',
             'prettyPrint' => true,
             'filenamePrefix' => 'telemetry-',
+            'atsFilenamePrefix' => 'telemetry-ats-',
             'filenamePattern' => '{prefix}{date}-{ms}Z.{ext}',
             'timestampFormat' => 'Y-m-d\TH-i-s',
         ],
@@ -319,6 +324,10 @@ function dashboard_config(): array
         'ETS2_TELEMETRY_UPSTREAM_URL',
         (string) ($config['telemetry']['upstreamUrl'] ?? 'http://127.0.0.1:31377/api/ets2/telemetry')
     );
+    $config['telemetry']['atsUpstreamUrl'] = dashboard_env_string(
+        'ATS_TELEMETRY_UPSTREAM_URL',
+        (string) ($config['telemetry']['atsUpstreamUrl'] ?? ($config['telemetry']['upstreamUrl'] ?? 'http://127.0.0.1:31377/api/ets2/telemetry'))
+    );
     $config['telemetry']['refreshIntervalMs'] = dashboard_env_int(
         'ETS2_TELEMETRY_REFRESH_MS',
         (int) ($config['telemetry']['refreshIntervalMs'] ?? 250)
@@ -343,6 +352,10 @@ function dashboard_config(): array
         'ETS2_TELEMETRY_CACHE_FILE',
         (string) ($config['telemetry']['cacheFile'] ?? (__DIR__ . '/tmp/telemetry-cache.json'))
     );
+    $config['telemetry']['atsCacheFile'] = dashboard_env_string(
+        'ATS_TELEMETRY_CACHE_FILE',
+        (string) ($config['telemetry']['atsCacheFile'] ?? (__DIR__ . '/tmp/telemetry-ats-cache.json'))
+    );
     $config['snapshots']['enabled'] = dashboard_env_bool(
         'ETS2_SNAPSHOTS_ENABLED',
         (bool) ($config['snapshots']['enabled'] ?? false)
@@ -355,13 +368,25 @@ function dashboard_config(): array
         'ETS2_SNAPSHOTS_DIRECTORY',
         (string) ($config['snapshots']['directory'] ?? (__DIR__ . '/snapshots'))
     );
+    $config['snapshots']['atsDirectory'] = dashboard_env_string(
+        'ATS_SNAPSHOTS_DIRECTORY',
+        (string) ($config['snapshots']['atsDirectory'] ?? (__DIR__ . '/snapshots/ats'))
+    );
     $config['snapshots']['stateFile'] = dashboard_env_string(
         'ETS2_SNAPSHOTS_STATE_FILE',
         (string) ($config['snapshots']['stateFile'] ?? (__DIR__ . '/tmp/snapshot-state.json'))
     );
+    $config['snapshots']['atsStateFile'] = dashboard_env_string(
+        'ATS_SNAPSHOTS_STATE_FILE',
+        (string) ($config['snapshots']['atsStateFile'] ?? (__DIR__ . '/tmp/snapshot-ats-state.json'))
+    );
     $config['snapshots']['prettyPrint'] = dashboard_env_bool(
         'ETS2_SNAPSHOTS_PRETTY_PRINT',
         (bool) ($config['snapshots']['prettyPrint'] ?? true)
+    );
+    $config['snapshots']['atsFilenamePrefix'] = dashboard_env_string(
+        'ATS_SNAPSHOTS_FILENAME_PREFIX',
+        (string) ($config['snapshots']['atsFilenamePrefix'] ?? 'telemetry-ats-')
     );
 
     return $config;

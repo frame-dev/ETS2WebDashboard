@@ -4,6 +4,10 @@ A browser-based ETS2 telemetry dashboard built with PHP, JavaScript, and CSS.
 
 The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes the site root to that page, so opening `http://localhost:8000/` loads the newer dashboard by default.
 
+## Roadmap
+
+- [ ] Support for American Truck Simulator
+
 ## What This Project Includes
 
 - `indexV2.php`: the main live dashboard
