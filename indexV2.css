@@ -1422,7 +1422,8 @@ body[data-help-open="true"] {
     overflow-wrap: anywhere;
 }
 
-.job-finished-popup {
+.job-finished-popup,
+.job-started-popup {
     position: absolute;
     left: 50%;
     top: 50%;
@@ -1446,12 +1447,14 @@ body[data-help-open="true"] {
     transition: opacity 180ms ease, transform 180ms ease;
 }
 
-.job-finished-popup.is-visible {
+.job-finished-popup.is-visible,
+.job-started-popup.is-visible {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
 }
 
-.job-finished-popup-badge {
+.job-finished-popup-badge,
+.job-started-popup-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1468,25 +1471,29 @@ body[data-help-open="true"] {
     letter-spacing: 0.12em;
 }
 
-.job-finished-popup-title {
+.job-finished-popup-title,
+.job-started-popup-title {
     color: var(--text-strong);
     font-size: 1.3rem;
     line-height: 1.05;
 }
 
-.job-finished-popup-meta {
+.job-finished-popup-meta,
+.job-started-popup-meta {
     color: var(--text-muted);
     font-size: 0.88rem;
     line-height: 1.35;
 }
 
-.job-finished-popup-stats {
+.job-finished-popup-stats,
+.job-started-popup-stats {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
 }
 
-.job-finished-popup-stat {
+.job-finished-popup-stat,
+.job-started-popup-stat {
     display: inline-flex;
     align-items: center;
     min-height: 30px;
@@ -1716,22 +1723,26 @@ body[data-help-open="true"] {
         min-width: 56px;
     }
 
-    .job-finished-popup {
+    .job-finished-popup,
+    .job-started-popup {
         width: min(360px, calc(100% - 24px));
         padding: 15px 16px;
         border-radius: 20px;
         gap: 8px;
     }
 
-    .job-finished-popup-title {
+    .job-finished-popup-title,
+    .job-started-popup-title {
         font-size: 1.08rem;
     }
 
-    .job-finished-popup-meta {
+    .job-finished-popup-meta,
+    .job-started-popup-meta {
         font-size: 0.8rem;
     }
 
-    .job-finished-popup-stat {
+    .job-finished-popup-stat,
+    .job-started-popup-stat {
         min-height: 26px;
         padding: 4px 9px;
         font-size: 0.72rem;
@@ -1948,31 +1959,37 @@ body[data-help-open="true"] {
         min-width: 56px;
     }
 
-    .job-finished-popup {
+    .job-finished-popup,
+    .job-started-popup {
         width: min(320px, calc(100% - 20px));
         padding: 13px 14px;
         border-radius: 18px;
     }
 
-    .job-finished-popup-badge {
+    .job-finished-popup-badge,
+    .job-started-popup-badge {
         min-height: 24px;
         padding: 3px 10px;
         font-size: 0.64rem;
     }
 
-    .job-finished-popup-title {
+    .job-finished-popup-title,
+    .job-started-popup-title {
         font-size: 0.98rem;
     }
 
-    .job-finished-popup-meta {
+    .job-finished-popup-meta,
+    .job-started-popup-meta {
         font-size: 0.74rem;
     }
 
-    .job-finished-popup-stats {
+    .job-finished-popup-stats,
+    .job-started-popup-stats {
         gap: 6px;
     }
 
-    .job-finished-popup-stat {
+    .job-finished-popup-stat,
+    .job-started-popup-stat {
         min-height: 24px;
         padding: 4px 8px;
         font-size: 0.68rem;
@@ -2089,7 +2106,8 @@ body[data-help-open="true"] {
         bottom: 8px;
     }
 
-    .job-finished-popup {
+    .job-finished-popup,
+    .job-started-popup {
         width: min(284px, calc(100% - 16px));
         padding: 12px;
     }

@@ -25,6 +25,7 @@ const telemetryMinimumIntervalMs = Math.max(100, readNumberConfig(telemetryPolli
 const telemetryCacheMultiplier = Math.max(1, readNumberConfig(telemetryPollingConfig.cacheMultiplier, 1));
 const activeTabStorageKey = (config.storageKeys && config.storageKeys.activeTab) || "ets2-dashboard-active-tab";
 const mapPreferencesStorageKey = (config.storageKeys && config.storageKeys.mapPreferences) || "ets2-dashboard-map-preferences";
+const jobHistoryStorageKey = (config.storageKeys && config.storageKeys.jobHistory) || "ets2-dashboard-job-history";
 const tileProxyEndpoint = config.tileProxyEndpoint || "tile-proxy.php";
 const tabsRoot = document.querySelector(".section-tabs");
 const routePlannerAverageKph = Number(config.routePlanner?.averageKph) || 63;
@@ -250,6 +251,14 @@ const elements = {
     heroMapJobCargo: document.getElementById("hero-map-job-cargo"),
     heroMapJobWeight: document.getElementById("hero-map-job-weight"),
     heroMapSource: document.getElementById("hero-map-source"),
+    jobStartedPopup: document.getElementById("job-started-popup"),
+    jobStartedPopupBadge: document.getElementById("job-started-popup-badge"),
+    jobStartedPopupTitle: document.getElementById("job-started-popup-title"),
+    jobStartedPopupMeta: document.getElementById("job-started-popup-meta"),
+    jobStartedPopupIncome: document.getElementById("job-started-popup-income"),
+    jobStartedPopupDistance: document.getElementById("job-started-popup-distance"),
+    jobStartedPopupWeight: document.getElementById("job-started-popup-weight"),
+    jobStartedPopupDeadline: document.getElementById("job-started-popup-deadline"),
     jobFinishedPopup: document.getElementById("job-finished-popup"),
     jobFinishedPopupBadge: document.getElementById("job-finished-popup-badge"),
     jobFinishedPopupTitle: document.getElementById("job-finished-popup-title"),
@@ -278,6 +287,8 @@ const elements = {
     routeSource: document.getElementById("route-source"),
     routeDestination: document.getElementById("route-destination"),
     routeStats: document.getElementById("route-stats"),
+    jobHistoryCount: document.getElementById("job-history-count"),
+    jobHistoryList: document.getElementById("job-history-list"),
     truckStats: document.getElementById("truck-stats"),
     systemsPills: document.getElementById("systems-pills"),
     systemsGauges: document.getElementById("systems-gauges"),
@@ -341,13 +352,21 @@ const playersRadiusDefault = Math.max(1, Number(config.playersRadiusDefault) || 
 const playersServerDefault = Math.max(1, Math.floor(Number(config.playersServerDefault) || 50));
 let speedRingPeakKph = 0;
 let speedRingPreviousKph = null;
+let previousActiveJobState = false;
+let previousActiveJobSignature = "";
 let previousJobFinishedState = false;
 let previousJobDeliveredState = false;
+let jobStartedPopupVisibleUntil = 0;
 let jobFinishedPopupVisibleUntil = 0;
+let jobStartedPopupHydrated = false;
 let previousJobFinishedSignature = "";
 let jobFinishedPopupHydrated = false;
 let lastHelpTrigger = null;
+let jobHistoryEntries = [];
+const jobStartedPopupDurationMs = 5000;
 const jobFinishedPopupDurationMs = 5000;
+const jobHistoryLimit = 12;
+const jobHistoryDuplicateWindowMs = 60000;
 const dashboardIssues = {
     telemetry: null,
     map: null,
@@ -387,6 +406,259 @@ function closeHelpDialog({ restoreFocus = true } = {}) {
     if (restoreFocus && lastHelpTrigger instanceof HTMLElement) {
         lastHelpTrigger.focus();
     }
+}
+
+function loadJobHistory() {
+    try {
+        const raw = window.localStorage.getItem(jobHistoryStorageKey);
+        if (!raw) {
+            jobHistoryEntries = [];
+            previousJobFinishedSignature = "";
+            return;
+        }
+
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+            jobHistoryEntries = [];
+            previousJobFinishedSignature = "";
+            return;
+        }
+
+        jobHistoryEntries = parsed
+            .filter((entry) => entry && typeof entry === "object")
+            .map((entry) => ({
+                id: String(entry.id || ""),
+                signature: String(entry.signature || ""),
+                recordedAt: String(entry.recordedAt || ""),
+                cargo: String(entry.cargo || "Delivery completed"),
+                route: String(entry.route || "Route unavailable"),
+                incomeLabel: String(entry.incomeLabel || "Income --"),
+                xpLabel: String(entry.xpLabel || "XP --"),
+                parkingLabel: String(entry.parkingLabel || "Parking --"),
+                distanceLabel: String(entry.distanceLabel || "-- km"),
+                deliveryTimeLabel: String(entry.deliveryTimeLabel || "--"),
+            }))
+            .filter((entry) => entry.id !== "")
+            .slice(0, jobHistoryLimit);
+        previousJobFinishedSignature = jobHistoryEntries[0]?.signature || "";
+    } catch (error) {
+        jobHistoryEntries = [];
+        previousJobFinishedSignature = "";
+    }
+}
+
+function persistJobHistory() {
+    try {
+        window.localStorage.setItem(jobHistoryStorageKey, JSON.stringify(jobHistoryEntries.slice(0, jobHistoryLimit)));
+    } catch (error) {
+        // Ignore storage failures to keep telemetry rendering stable.
+    }
+}
+
+function renderJobHistory() {
+    if (!elements.jobHistoryList) {
+        return;
+    }
+
+    if (elements.jobHistoryCount) {
+        const count = jobHistoryEntries.length;
+        elements.jobHistoryCount.textContent = `${count} ${count === 1 ? "entry" : "entries"}`;
+    }
+
+    if (jobHistoryEntries.length === 0) {
+        elements.jobHistoryList.innerHTML = `
+            <div class="job-history-empty">
+                <strong>No deliveries recorded yet</strong>
+                <span>Complete a job and it will appear here with cargo, route, income, XP, and parking result.</span>
+            </div>
+        `;
+        return;
+    }
+
+    elements.jobHistoryList.innerHTML = jobHistoryEntries.map((entry) => `
+        <article class="job-history-item">
+            <div class="job-history-header">
+                <div>
+                    <h3 class="job-history-cargo">${escapeHtml(entry.cargo)}</h3>
+                    <p class="job-history-route">${escapeHtml(entry.route)}</p>
+                </div>
+                <span class="job-history-time">${escapeHtml(formatLocalTime(entry.recordedAt))}</span>
+            </div>
+            <div class="job-history-chips">
+                <span class="job-history-chip" data-tone="income">${escapeHtml(entry.incomeLabel)}</span>
+                <span class="job-history-chip" data-tone="xp">${escapeHtml(entry.xpLabel)}</span>
+                <span class="job-history-chip" data-tone="parking">${escapeHtml(entry.parkingLabel)}</span>
+            </div>
+            <div class="job-history-meta">
+                <span>Distance ${escapeHtml(entry.distanceLabel)}</span>
+                <span>Delivery time ${escapeHtml(entry.deliveryTimeLabel)}</span>
+            </div>
+        </article>
+    `).join("");
+}
+
+function isSimulatorRunningAndConnected(data = {}) {
+    const game = data.game || {};
+    const gameName = typeof game.gameName === "string" ? game.gameName.trim() : "";
+
+    return game.connected === true && gameName !== "" && game.paused !== true;
+}
+
+function buildActiveJobSignature(gameplay = {}, job = {}) {
+    const signatureParts = [
+        gameplay.onJob ? "active" : "idle",
+        job.cargo,
+        job.sourceCity,
+        job.sourceCompany,
+        job.destinationCity,
+        job.destinationCompany,
+        job.income,
+        job.cargoMass,
+        job.plannedDistanceKm,
+        job.deadlineTime,
+    ]
+        .map((value) => String(value ?? "").trim())
+        .filter((value) => value !== "");
+
+    return signatureParts.join("|");
+}
+
+function buildActiveJobSummary(data = {}) {
+    const simulatorActive = isSimulatorRunningAndConnected(data);
+    const gameplay = data.gameplay || {};
+    const job = data.job || {};
+    const navigation = data.navigation || {};
+    const activeJob = simulatorActive && Boolean(gameplay.onJob);
+    const signature = activeJob ? buildActiveJobSignature(gameplay, job) : "";
+    const hasActiveJobDetails = activeJob && signature !== "";
+    const cargo = typeof job.cargo === "string" && job.cargo.trim() !== ""
+        ? job.cargo.trim()
+        : "New delivery";
+    const pickup = formatLocalizedRouteLocation(job.sourceCity, job.sourceCompany, "Pickup unavailable");
+    const destination = formatLocalizedRouteLocation(job.destinationCity, job.destinationCompany, "Destination unavailable");
+    const route = `${pickup} -> ${destination}`;
+    const plannedDistanceKm = getNumber(job.plannedDistanceKm);
+    const navigationDistanceKm = getNavigationDistanceKm(navigation);
+    const routeDistanceKm = plannedDistanceKm ?? navigationDistanceKm;
+    const routeDistanceLabel = routeDistanceKm === null ? "Distance --" : `Distance ${formatDistanceKm(routeDistanceKm)}`;
+    const deadline = formatGameEventTime(job.deadlineTime);
+
+    return {
+        simulatorActive,
+        gameplay,
+        job,
+        navigation,
+        activeJob,
+        signature,
+        hasActiveJobDetails,
+        cargo,
+        route,
+        incomeLabel: formatIncomeLabel(job.income),
+        distanceLabel: routeDistanceLabel,
+        weightLabel: `Weight ${formatMass(job.cargoMass)}`,
+        deadlineLabel: deadline === "--" ? "Deadline --" : `Deadline ${deadline}`,
+    };
+}
+
+function buildDeliverySummary(data = {}) {
+    const simulatorActive = isSimulatorRunningAndConnected(data);
+    const gameplay = data.gameplay || {};
+    const job = data.job || {};
+    const delivery = gameplay.jobDeliveredDetails || {};
+    const jobFinished = simulatorActive && Boolean(gameplay.jobFinished);
+    const jobDelivered = simulatorActive && Boolean(gameplay.jobDelivered);
+    const signature = simulatorActive ? buildJobFinishedSignature(gameplay, job) : "";
+    const hasDeliveryDetails = simulatorActive && signature !== "";
+    const cargo = typeof job.cargo === "string" && job.cargo.trim() !== ""
+        ? job.cargo.trim()
+        : "Delivery completed";
+    const routeParts = [job.sourceCity, job.destinationCity]
+        .filter((value) => typeof value === "string" && value.trim() !== "")
+        .map((value) => value.trim());
+    const route = routeParts.length > 0 ? routeParts.join(" -> ") : "Route unavailable";
+    const xp = formatNumber(delivery.earnedXp, 0);
+
+    return {
+        simulatorActive,
+        gameplay,
+        job,
+        delivery,
+        jobFinished,
+        jobDelivered,
+        signature,
+        hasDeliveryDetails,
+        cargo,
+        route,
+        incomeLabel: formatIncomeLabel(delivery.revenue),
+        xpLabel: xp === "--" ? "XP --" : `XP ${xp}`,
+        distanceLabel: formatDistanceKm(delivery.distanceKm),
+        parkingLabel: delivery.autoParked ? "Auto parked" : "Manual parking",
+        deliveryTimeLabel: formatDurationMinutes(delivery.deliveryTime),
+    };
+}
+
+function syncActiveJobStartState(activeJobSummary) {
+    const hasFreshJobStartEvent = jobStartedPopupHydrated
+        && activeJobSummary.hasActiveJobDetails
+        && (
+            (activeJobSummary.activeJob && !previousActiveJobState)
+            || activeJobSummary.signature !== previousActiveJobSignature
+        );
+
+    previousActiveJobState = activeJobSummary.activeJob;
+    previousActiveJobSignature = activeJobSummary.signature;
+    jobStartedPopupHydrated = true;
+
+    return hasFreshJobStartEvent;
+}
+
+function syncDeliveryCompletionState(deliverySummary) {
+    const hasFreshDeliveryEvent =
+        (deliverySummary.jobFinished && !previousJobFinishedState)
+        || (deliverySummary.jobDelivered && !previousJobDeliveredState)
+        || (deliverySummary.hasDeliveryDetails && deliverySummary.signature !== previousJobFinishedSignature);
+
+    previousJobFinishedState = deliverySummary.jobFinished;
+    previousJobDeliveredState = deliverySummary.jobDelivered;
+    if (deliverySummary.hasDeliveryDetails) {
+        previousJobFinishedSignature = deliverySummary.signature;
+    }
+
+    return hasFreshDeliveryEvent;
+}
+
+function recordJobHistoryEntry(deliverySummary) {
+    if (!deliverySummary.hasDeliveryDetails) {
+        return;
+    }
+
+    const now = Date.now();
+    const latestEntry = jobHistoryEntries[0] || null;
+    const latestRecordedAtMs = latestEntry ? Date.parse(latestEntry.recordedAt) : NaN;
+    if (
+        latestEntry
+        && latestEntry.signature === deliverySummary.signature
+        && Number.isFinite(latestRecordedAtMs)
+        && (now - latestRecordedAtMs) < jobHistoryDuplicateWindowMs
+    ) {
+        return;
+    }
+
+    jobHistoryEntries.unshift({
+        id: `${deliverySummary.signature}|${now}`,
+        signature: deliverySummary.signature,
+        recordedAt: new Date(now).toISOString(),
+        cargo: deliverySummary.cargo,
+        route: deliverySummary.route,
+        incomeLabel: deliverySummary.incomeLabel,
+        xpLabel: deliverySummary.xpLabel,
+        parkingLabel: deliverySummary.parkingLabel,
+        distanceLabel: deliverySummary.distanceLabel,
+        deliveryTimeLabel: deliverySummary.deliveryTimeLabel,
+    });
+    jobHistoryEntries = jobHistoryEntries.slice(0, jobHistoryLimit);
+    persistJobHistory();
+    renderJobHistory();
 }
 
 function getMapSourceById(sourceId) {
@@ -2809,67 +3081,75 @@ function renderHero(data) {
     }
 }
 
+function renderJobStartedPopup(data) {
+    if (!elements.jobStartedPopup) {
+        return;
+    }
+
+    const activeJobSummary = buildActiveJobSummary(data);
+    const finishedPopupActive = Date.now() < jobFinishedPopupVisibleUntil;
+    const isVisible = activeJobSummary.hasActiveJobDetails
+        && Date.now() < jobStartedPopupVisibleUntil
+        && !finishedPopupActive;
+
+    if (elements.jobStartedPopupBadge) {
+        elements.jobStartedPopupBadge.textContent = "New delivery";
+    }
+    if (elements.jobStartedPopupTitle) {
+        elements.jobStartedPopupTitle.textContent = activeJobSummary.cargo;
+    }
+    if (elements.jobStartedPopupMeta) {
+        elements.jobStartedPopupMeta.textContent = activeJobSummary.route;
+    }
+    if (elements.jobStartedPopupIncome) {
+        elements.jobStartedPopupIncome.textContent = activeJobSummary.incomeLabel;
+    }
+    if (elements.jobStartedPopupDistance) {
+        elements.jobStartedPopupDistance.textContent = activeJobSummary.distanceLabel;
+    }
+    if (elements.jobStartedPopupWeight) {
+        elements.jobStartedPopupWeight.textContent = activeJobSummary.weightLabel;
+    }
+    if (elements.jobStartedPopupDeadline) {
+        elements.jobStartedPopupDeadline.textContent = activeJobSummary.deadlineLabel;
+    }
+
+    elements.jobStartedPopup.classList.toggle("is-visible", isVisible);
+    elements.jobStartedPopup.setAttribute("aria-hidden", isVisible ? "false" : "true");
+}
+
 function renderJobFinishedPopup(data) {
     if (!elements.jobFinishedPopup) {
         return;
     }
 
-    const gameplay = data.gameplay || {};
-    const job = data.job || {};
-    const delivery = gameplay.jobDeliveredDetails || {};
-    const jobFinished = Boolean(gameplay.jobFinished);
-    const jobDelivered = Boolean(gameplay.jobDelivered);
-    const deliverySignature = buildJobFinishedSignature(gameplay, job);
-    const hasDeliveryDetails = deliverySignature !== "";
-    if (elements.jobFinishedPopup.classList.contains("is-visible") && !jobFinishedPopupHydrated && hasDeliveryDetails) {
+    const deliverySummary = buildDeliverySummary(data);
+    if (elements.jobFinishedPopup.classList.contains("is-visible") && !jobFinishedPopupHydrated && deliverySummary.hasDeliveryDetails) {
         jobFinishedPopupVisibleUntil = Date.now() + jobFinishedPopupDurationMs;
     }
     jobFinishedPopupHydrated = true;
-
-    const hasFreshDeliveryEvent =
-        (jobFinished && !previousJobFinishedState)
-        || (jobDelivered && !previousJobDeliveredState)
-        || (hasDeliveryDetails && deliverySignature !== previousJobFinishedSignature);
-
-    if (hasFreshDeliveryEvent) {
-        jobFinishedPopupVisibleUntil = Date.now() + jobFinishedPopupDurationMs;
-    }
-    previousJobFinishedState = jobFinished;
-    previousJobDeliveredState = jobDelivered;
-    if (hasDeliveryDetails) {
-        previousJobFinishedSignature = deliverySignature;
-    }
-
-    const cargo = typeof job.cargo === "string" && job.cargo.trim() !== ""
-        ? job.cargo.trim()
-        : "Delivery completed";
-    const routeParts = [job.sourceCity, job.destinationCity]
-        .filter((value) => typeof value === "string" && value.trim() !== "")
-        .map((value) => value.trim());
-    const route = routeParts.length > 0 ? routeParts.join(" -> ") : "Route unavailable";
-    const isVisible = hasDeliveryDetails && Date.now() < jobFinishedPopupVisibleUntil;
+    const isVisible = deliverySummary.hasDeliveryDetails && Date.now() < jobFinishedPopupVisibleUntil;
 
     if (elements.jobFinishedPopupBadge) {
-        elements.jobFinishedPopupBadge.textContent = jobDelivered ? "Delivery complete" : "Job finished";
+        elements.jobFinishedPopupBadge.textContent = deliverySummary.jobDelivered ? "Delivery complete" : "Job finished";
     }
     if (elements.jobFinishedPopupTitle) {
-        elements.jobFinishedPopupTitle.textContent = cargo;
+        elements.jobFinishedPopupTitle.textContent = deliverySummary.cargo;
     }
     if (elements.jobFinishedPopupMeta) {
-        elements.jobFinishedPopupMeta.textContent = route;
+        elements.jobFinishedPopupMeta.textContent = deliverySummary.route;
     }
     if (elements.jobFinishedPopupRevenue) {
-        elements.jobFinishedPopupRevenue.textContent = formatIncomeLabel(delivery.revenue);
+        elements.jobFinishedPopupRevenue.textContent = deliverySummary.incomeLabel;
     }
     if (elements.jobFinishedPopupXp) {
-        const xp = formatNumber(delivery.earnedXp, 0);
-        elements.jobFinishedPopupXp.textContent = xp === "--" ? "XP --" : `XP ${xp}`;
+        elements.jobFinishedPopupXp.textContent = deliverySummary.xpLabel;
     }
     if (elements.jobFinishedPopupDistance) {
-        elements.jobFinishedPopupDistance.textContent = formatDistanceKm(delivery.distanceKm);
+        elements.jobFinishedPopupDistance.textContent = deliverySummary.distanceLabel;
     }
     if (elements.jobFinishedPopupParking) {
-        elements.jobFinishedPopupParking.textContent = delivery.autoParked ? "Auto parked" : "Manual parking";
+        elements.jobFinishedPopupParking.textContent = deliverySummary.parkingLabel;
     }
 
     elements.jobFinishedPopup.classList.toggle("is-visible", isVisible);
@@ -3580,6 +3860,18 @@ function renderRawPayload(payload) {
 function renderTelemetry(payload) {
     const data = payload.data || {};
     latestTelemetryData = data;
+    const activeJobSummary = buildActiveJobSummary(data);
+    const hasFreshJobStartEvent = syncActiveJobStartState(activeJobSummary);
+    if (hasFreshJobStartEvent) {
+        jobStartedPopupVisibleUntil = Date.now() + jobStartedPopupDurationMs;
+    }
+    const deliverySummary = buildDeliverySummary(data);
+    const hasFreshDeliveryEvent = syncDeliveryCompletionState(deliverySummary);
+    if (hasFreshDeliveryEvent) {
+        jobStartedPopupVisibleUntil = 0;
+        jobFinishedPopupVisibleUntil = Date.now() + jobFinishedPopupDurationMs;
+        recordJobHistoryEntry(deliverySummary);
+    }
 
     if (elements.refreshInterval) {
         elements.refreshInterval.textContent = `${payload.refreshIntervalMs ?? refreshIntervalMs} ms`;
@@ -3590,6 +3882,7 @@ function renderTelemetry(payload) {
     }
 
     renderHero(data);
+    renderJobStartedPopup(data);
     renderJobFinishedPopup(data);
     renderMetrics(data);
     renderRoute(data);
@@ -3938,12 +4231,14 @@ try {
 }
 
 loadMapPreferences();
+loadJobHistory();
 syncMapSourceControls();
 resetTileMapRuntime(getSelectedMapSource());
 updateTruckersMpToggle();
 updateRemoteTelemetryToggle();
 syncRemoteTelemetryInput();
 updateRemoteTelemetryStatus();
+renderJobHistory();
 loadCityLocalizations();
 
 startTelemetryPolling();

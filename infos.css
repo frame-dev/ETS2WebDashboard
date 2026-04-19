@@ -361,6 +361,113 @@ button:focus-visible,
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+.job-history-list {
+    display: grid;
+    gap: 12px;
+}
+
+.job-history-empty {
+    padding: 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(184, 226, 255, 0.12);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
+        rgba(9, 18, 30, 0.46);
+    color: var(--text-muted);
+}
+
+.job-history-empty strong {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-strong);
+    font-size: 0.96rem;
+}
+
+.job-history-item {
+    display: grid;
+    gap: 12px;
+    padding: 16px 18px;
+    border-radius: 20px;
+    border: 1px solid rgba(184, 226, 255, 0.12);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
+        rgba(9, 18, 30, 0.46);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.job-history-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.job-history-cargo {
+    margin: 0;
+    color: var(--text-strong);
+    font-size: 1rem;
+    line-height: 1.2;
+}
+
+.job-history-route {
+    margin: 4px 0 0;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+    line-height: 1.35;
+}
+
+.job-history-time {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.job-history-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.job-history-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(184, 226, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.job-history-chip[data-tone="income"] {
+    border-color: rgba(84, 239, 199, 0.22);
+    background: rgba(84, 239, 199, 0.1);
+    color: #dbfff4;
+}
+
+.job-history-chip[data-tone="xp"] {
+    border-color: rgba(121, 199, 255, 0.22);
+    background: rgba(121, 199, 255, 0.1);
+    color: #e3f4ff;
+}
+
+.job-history-chip[data-tone="parking"] {
+    border-color: rgba(255, 191, 105, 0.22);
+    background: rgba(255, 191, 105, 0.1);
+    color: #ffe7bf;
+}
+
+.job-history-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
 .trailer-summary {
     display: grid;
     gap: 12px;

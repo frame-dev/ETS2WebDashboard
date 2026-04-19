@@ -142,6 +142,17 @@ $json_flags = JSON_UNESCAPED_SLASHES
                     </article>
                 </div>
 
+                <article class="panel job-history-panel span-12">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">Recent Deliveries</p>
+                            <h2>Job History</h2>
+                        </div>
+                        <span class="panel-badge" id="job-history-count">0 entries</span>
+                    </div>
+                    <div class="job-history-list" id="job-history-list" aria-live="polite"></div>
+                </article>
+
             </section>
 
             <section class="dashboard-grid tab-page" id="panel-systems" role="tabpanel" aria-labelledby="tab-systems" data-tab-panel="systems">

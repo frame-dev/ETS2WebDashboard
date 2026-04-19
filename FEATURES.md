@@ -16,7 +16,9 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 - Inline dashboard notice cards for telemetry failures, cached fallback mode, and map or tile issues
 - In-app `Help` overlay with dashboard guidance, shortcuts, and troubleshooting notes
 - Route summary with source and destination, distance, ETA, real-time ETA, and fuel range
+- New-job popup centered on the hero map with cargo, route, income, distance, weight, and deadline details
 - Delivery-complete popup with income, XP, distance, and parking result
+- Live event popup logic that only shows job-start and delivery-finished popups on real telemetry transitions, not on page refresh
 - Main-toolbar `TruckersMP` toggle for area-player visibility
 - Other-player overlays sourced from both TruckersMP and direct telemetry URLs
 
@@ -59,6 +61,7 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 
 - Secondary telemetry page in `infos.php`
 - Tabbed detail views for `Overview`, `Systems`, `World`, and `Debug`
+- Recent-delivery job history in the `Overview` tab, including cargo, route, income, XP, and parking result
 - Direct telemetry URL form for loading other-player telemetry endpoints
 - Truck profile and vehicle identity details
 - Drivetrain, controls, lighting, and trailer status sections

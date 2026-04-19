@@ -24,9 +24,12 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes t
 - Draggable and zoomable hero map with center controls, corrected truck heading, follow defaults, and a live job overlay
 - Other-player overlays on both map views, including TruckersMP area players and direct remote telemetry players
 - Independent `TruckersMP` toolbar toggle so TruckersMP markers can be shown or hidden without disabling direct telemetry URL players
+- Map-centered event popups for live job start and delivery completion events
+- New-job popup with cargo, route, income, distance, weight, and deadline details
 - Delivery-complete popup with income, XP, trip distance, and parking result
 - Direct dashboard links to `settings.php` and the `infos.php` workspace
 - Expanded information page in `infos.php` with `Overview`, `Systems`, `World`, and `Debug` tabs
+- Recent-delivery job history in `infos.php` with cargo, route, income, XP, parking result, and timing details
 - Direct telemetry URL form in `infos.php` for loading other players from remote telemetry endpoints
 - System and vehicle detail views for truck profile, health, drivetrain, trailer state, controls, lighting, world position, events, and raw telemetry JSON
 - Interactive map system with saved browser preferences, remembered `Standard` or `ProMods` map selection, automatic per-source fallback bounds, tile config discovery, overzoom support, and static fallback rendering
@@ -87,7 +90,7 @@ It focuses on fast, at-a-glance driving information:
 - hero map with drag and zoom controls
 - built-in help overlay for controls, shortcuts, and troubleshooting
 - TruckersMP overlay toggle
-- delivery completion popup
+- live job-start and delivery-completion popups
 - connection and refresh status
 
 ### Info Workspace
@@ -100,6 +103,8 @@ It focuses on fast, at-a-glance driving information:
 - `Debug`
 
 This page is useful when you want more detailed truck, trailer, controls, events, and raw payload visibility than the main dashboard shows.
+
+It also includes a recent-deliveries history panel so completed jobs can be reviewed without adding extra clutter to the main dashboard.
 
 It also includes a direct telemetry URL form for other players. Enter one or more comma-separated telemetry endpoints such as:
 
@@ -350,6 +355,8 @@ The map overlays can display:
 - direct remote telemetry players from saved URLs
 
 The dashboard can expose named map sources such as `Standard` and `ProMods`, each with its own tile base URLs, config discovery order, retry timing, and fallback bounds. The selected map source is shared between the hero map and world map and remembered in browser storage.
+
+The main dashboard also uses centered map event popups for live job transitions. A new job shows a short popup with cargo and route details, and a finished delivery shows a completion popup. These are triggered by live telemetry state changes, not by reloading the page.
 
 `tile-proxy.php` only allows requests to configured tile base URLs from `frontend.mapTiles.baseUrlCandidates` and `frontend.mapSources`.
 

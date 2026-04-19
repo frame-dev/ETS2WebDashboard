@@ -32,9 +32,6 @@ $dashboard_theme_css = ':root{' . implode(';', $dashboard_theme_declarations) . 
 
 $refresh_interval_ms = (int) get_telemetry_refresh_interval_ms();
 $frontend_config = is_array($app_config['frontend'] ?? null) ? $app_config['frontend'] : [];
-$job_finished = (bool) get_job_finished($json_data)
-    || (bool) get_job_delivered($json_data)
-    || !empty(get_job_delivered_details($json_data));
 $job_finished_details = get_job_delivered_details($json_data);
 $job_finished_details = is_array($job_finished_details) ? $job_finished_details : [];
 $job_finished_cargo = trim((string) get_job_cargo($json_data));
@@ -208,10 +205,10 @@ $json_flags = JSON_UNESCAPED_SLASHES
                 </div>
                 <a class="more-info" href="infos.php" aria-label="Open info panel">Info</a>
                 <div
-                    class="job-finished-popup<?php echo $job_finished ? ' is-visible' : ''; ?>"
+                    class="job-finished-popup"
                     id="job-finished-popup"
                     aria-live="polite"
-                    aria-hidden="<?php echo $job_finished ? 'false' : 'true'; ?>">
+                    aria-hidden="true">
                     <span class="job-finished-popup-badge" id="job-finished-popup-badge">Delivery complete</span>
                     <strong class="job-finished-popup-title" id="job-finished-popup-title"><?php echo htmlspecialchars($job_finished_title, ENT_QUOTES, 'UTF-8'); ?></strong>
                     <span class="job-finished-popup-meta" id="job-finished-popup-meta"><?php echo htmlspecialchars($job_finished_meta, ENT_QUOTES, 'UTF-8'); ?></span>
@@ -220,6 +217,17 @@ $json_flags = JSON_UNESCAPED_SLASHES
                         <span class="job-finished-popup-stat" id="job-finished-popup-xp"><?php echo htmlspecialchars($job_finished_xp, ENT_QUOTES, 'UTF-8'); ?></span>
                         <span class="job-finished-popup-stat" id="job-finished-popup-distance"><?php echo htmlspecialchars($job_finished_distance, ENT_QUOTES, 'UTF-8'); ?></span>
                         <span class="job-finished-popup-stat" id="job-finished-popup-parking"><?php echo htmlspecialchars($job_finished_parking, ENT_QUOTES, 'UTF-8'); ?></span>
+                    </div>
+                </div>
+                <div class="job-started-popup" id="job-started-popup" aria-live="polite" aria-hidden="true">
+                    <span class="job-started-popup-badge" id="job-started-popup-badge">New delivery</span>
+                    <strong class="job-started-popup-title" id="job-started-popup-title">Delivery ready</strong>
+                    <span class="job-started-popup-meta" id="job-started-popup-meta">Pickup unavailable -> Destination unavailable</span>
+                    <div class="job-started-popup-stats">
+                        <span class="job-started-popup-stat" id="job-started-popup-income">Income --</span>
+                        <span class="job-started-popup-stat" id="job-started-popup-distance">Distance --</span>
+                        <span class="job-started-popup-stat" id="job-started-popup-weight">Weight --</span>
+                        <span class="job-started-popup-stat" id="job-started-popup-deadline">Deadline --</span>
                     </div>
                 </div>
             </div>
@@ -269,6 +277,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                             <li>The speed ring shows current speed, road speed limit, cruise control, peak, and trend.</li>
                             <li>The route panel shows source, destination, planned distance, ETA, and estimated real time.</li>
                             <li>The job overlay on the map summarizes income, cargo, and weight.</li>
+                            <li>When a new job starts, a small corner popup summarizes cargo, route, income, distance, weight, and deadline.</li>
                             <li>When a delivery finishes, the popup summarizes route, income, XP, distance, and parking result.</li>
                         </ul>
                     </article>
