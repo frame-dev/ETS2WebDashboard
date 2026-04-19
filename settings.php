@@ -200,6 +200,7 @@ function settings_build_managed_config(array $formData): array
             'playersServerDefault' => $formData['players']['playersServerDefault'],
             'telemetryPolling' => $formData['telemetryPolling'],
             'telemetryEndpoint' => $formData['frontend']['telemetryEndpoint'],
+            'popupEvents' => $formData['frontend']['popupEvents'],
             'storageKeys' => $formData['frontend']['storageKeys'],
             'mapDefaults' => $formData['mapDefaults'],
             'mapBounds' => $formData['mapBounds'],
@@ -221,6 +222,7 @@ function settings_apply_managed_config(array $localConfig, array $managedConfig)
     $localConfig['frontend']['playersServerDefault'] = $managedConfig['frontend']['playersServerDefault'];
     $localConfig['frontend']['telemetryPolling'] = $managedConfig['frontend']['telemetryPolling'];
     $localConfig['frontend']['telemetryEndpoint'] = $managedConfig['frontend']['telemetryEndpoint'];
+    $localConfig['frontend']['popupEvents'] = $managedConfig['frontend']['popupEvents'];
     $localConfig['frontend']['storageKeys'] = $managedConfig['frontend']['storageKeys'];
     $localConfig['frontend']['mapDefaults'] = $managedConfig['frontend']['mapDefaults'];
     $localConfig['frontend']['mapBounds'] = $managedConfig['frontend']['mapBounds'];
@@ -283,6 +285,8 @@ function settings_import_json_to_form_data(array $currentFormData, array $import
     $currentFormData['telemetryPolling']['cacheMultiplier'] = max(1, settings_int_value($frontend['telemetryPolling']['cacheMultiplier'] ?? null, $currentFormData['telemetryPolling']['cacheMultiplier']));
 
     $currentFormData['frontend']['telemetryEndpoint'] = trim((string) (($frontend['telemetryEndpoint'] ?? null) ?? $currentFormData['frontend']['telemetryEndpoint']));
+    $currentFormData['frontend']['popupEvents']['showJobStarted'] = (bool) (($frontend['popupEvents']['showJobStarted'] ?? null) ?? $currentFormData['frontend']['popupEvents']['showJobStarted']);
+    $currentFormData['frontend']['popupEvents']['showJobFinished'] = (bool) (($frontend['popupEvents']['showJobFinished'] ?? null) ?? $currentFormData['frontend']['popupEvents']['showJobFinished']);
     $currentFormData['frontend']['storageKeys']['activeTab'] = trim((string) (($frontend['storageKeys']['activeTab'] ?? null) ?? $currentFormData['frontend']['storageKeys']['activeTab']));
     $currentFormData['frontend']['storageKeys']['mapPreferences'] = trim((string) (($frontend['storageKeys']['mapPreferences'] ?? null) ?? $currentFormData['frontend']['storageKeys']['mapPreferences']));
     $currentFormData['mapDefaults']['worldZoom'] = max(0, settings_int_value($frontend['mapDefaults']['worldZoom'] ?? null, $currentFormData['mapDefaults']['worldZoom']));
@@ -385,6 +389,10 @@ $mapBoundsConfig = [
 ];
 $frontendConfig = [
     'telemetryEndpoint' => (string) dashboard_config_value('frontend.telemetryEndpoint', 'telemetry.php?format=json'),
+    'popupEvents' => [
+        'showJobStarted' => (bool) dashboard_config_value('frontend.popupEvents.showJobStarted', true),
+        'showJobFinished' => (bool) dashboard_config_value('frontend.popupEvents.showJobFinished', true),
+    ],
     'storageKeys' => [
         'activeTab' => (string) dashboard_config_value('frontend.storageKeys.activeTab', 'ets2-dashboard-active-tab'),
         'mapPreferences' => (string) dashboard_config_value('frontend.storageKeys.mapPreferences', 'ets2-dashboard-map-preferences'),
@@ -568,6 +576,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             ],
             'frontend' => [
                 'telemetryEndpoint' => trim((string) ($_POST['frontend_telemetry_endpoint'] ?? $frontendConfig['telemetryEndpoint'])),
+                'popupEvents' => [
+                    'showJobStarted' => settings_checkbox_post('frontend_popup_show_job_started'),
+                    'showJobFinished' => settings_checkbox_post('frontend_popup_show_job_finished'),
+                ],
                 'storageKeys' => [
                     'activeTab' => trim((string) ($_POST['frontend_storage_key_active_tab'] ?? $frontendConfig['storageKeys']['activeTab'])),
                     'mapPreferences' => trim((string) ($_POST['frontend_storage_key_map_preferences'] ?? $frontendConfig['storageKeys']['mapPreferences'])),
@@ -969,6 +981,26 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                 <input id="frontend-telemetry-endpoint" name="frontend_telemetry_endpoint" type="text" value="<?php echo htmlspecialchars($formData['frontend']['telemetryEndpoint'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">The endpoint the browser polls for fresh dashboard data.</span>
                             </div>
+                            <div class="toggle-card">
+                                <div class="toggle-copy">
+                                    <span class="toggle-title">Show new job popup</span>
+                                    <span>Controls the centered popup that appears when a live delivery starts.</span>
+                                </div>
+                                <label class="switch" aria-label="Show new job popup">
+                                    <input type="checkbox" name="frontend_popup_show_job_started" value="1" <?php echo $formData['frontend']['popupEvents']['showJobStarted'] ? 'checked' : ''; ?>>
+                                    <span class="track"></span>
+                                </label>
+                            </div>
+                            <div class="toggle-card">
+                                <div class="toggle-copy">
+                                    <span class="toggle-title">Show delivery finished popup</span>
+                                    <span>Controls the centered popup that appears when a delivery is completed.</span>
+                                </div>
+                                <label class="switch" aria-label="Show delivery finished popup">
+                                    <input type="checkbox" name="frontend_popup_show_job_finished" value="1" <?php echo $formData['frontend']['popupEvents']['showJobFinished'] ? 'checked' : ''; ?>>
+                                    <span class="track"></span>
+                                </label>
+                            </div>
                             <div class="field">
                                 <label for="frontend-storage-key-active-tab">Active tab storage key</label>
                                 <input id="frontend-storage-key-active-tab" name="frontend_storage_key_active_tab" type="text" value="<?php echo htmlspecialchars($formData['frontend']['storageKeys']['activeTab'], ENT_QUOTES, 'UTF-8'); ?>">
@@ -1323,7 +1355,7 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                             </div>
                         </div>
                         <pre><?php echo htmlspecialchars($configPreview, ENT_QUOTES, 'UTF-8'); ?></pre>
-                        <div class="note">Saving here updates <code>app</code>, <code>design</code>, <code>telemetry</code>, <code>snapshots</code>, <code>frontend.telemetryEndpoint</code>, <code>frontend.storageKeys</code>, <code>frontend.telemetryPolling</code>, <code>frontend.playersRefreshMs</code>, <code>frontend.playersRadiusDefault</code>, <code>frontend.playersServerDefault</code>, <code>frontend.routePlanner</code>, <code>frontend.speedRing</code>, <code>frontend.mapDefaults</code>, <code>frontend.mapBounds</code>, and <code>frontend.mapTiles</code> in <code>config.local.php</code>. Other local config keys are preserved.</div>
+                        <div class="note">Saving here updates <code>app</code>, <code>design</code>, <code>telemetry</code>, <code>snapshots</code>, <code>frontend.telemetryEndpoint</code>, <code>frontend.popupEvents</code>, <code>frontend.storageKeys</code>, <code>frontend.telemetryPolling</code>, <code>frontend.playersRefreshMs</code>, <code>frontend.playersRadiusDefault</code>, <code>frontend.playersServerDefault</code>, <code>frontend.routePlanner</code>, <code>frontend.speedRing</code>, <code>frontend.mapDefaults</code>, <code>frontend.mapBounds</code>, and <code>frontend.mapTiles</code> in <code>config.local.php</code>. Other local config keys are preserved.</div>
                     </section>
                 </div>
             </section>

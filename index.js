@@ -15,9 +15,12 @@ const telemetryRequestTimeoutMs = Math.max(
 );
 const telemetryPollingConfig = config.telemetryPolling || {};
 const speedRingConfig = config.speedRing || {};
+const popupEventsConfig = config.popupEvents || {};
 const speedRingMaxDisplayKph = readNumberConfig(speedRingConfig.maxDisplayKph, 130);
 const speedRingOverspeedToleranceKph = readNumberConfig(speedRingConfig.overspeedToleranceKph, 2);
 const speedRingTrendSensitivityKph = readNumberConfig(speedRingConfig.trendSensitivityKph, 0.8);
+const showJobStartedPopup = popupEventsConfig.showJobStarted !== false;
+const showJobFinishedPopup = popupEventsConfig.showJobFinished !== false;
 const telemetryBackoffStepMs = Math.max(0, readNumberConfig(telemetryPollingConfig.backoffStepMs, 0));
 const telemetryMaxBackoffMs = Math.max(0, readNumberConfig(telemetryPollingConfig.maxBackoffMs, 250));
 const telemetryHiddenIntervalMs = Math.max(0, readNumberConfig(telemetryPollingConfig.hiddenIntervalMs, 250));
@@ -3313,6 +3316,12 @@ function renderJobStartedPopup(data) {
         return;
     }
 
+    if (!showJobStartedPopup) {
+        elements.jobStartedPopup.classList.remove("is-visible");
+        elements.jobStartedPopup.setAttribute("aria-hidden", "true");
+        return;
+    }
+
     const activeJobSummary = buildActiveJobSummary(data);
     const finishedPopupActive = Date.now() < jobFinishedPopupVisibleUntil;
     const isVisible = activeJobSummary.hasActiveJobDetails
@@ -3347,6 +3356,12 @@ function renderJobStartedPopup(data) {
 
 function renderJobFinishedPopup(data) {
     if (!elements.jobFinishedPopup) {
+        return;
+    }
+
+    if (!showJobFinishedPopup) {
+        elements.jobFinishedPopup.classList.remove("is-visible");
+        elements.jobFinishedPopup.setAttribute("aria-hidden", "true");
         return;
     }
 
@@ -4160,14 +4175,16 @@ function renderTelemetry(payload) {
     latestTelemetryData = data;
     const activeJobSummary = buildActiveJobSummary(data);
     const hasFreshJobStartEvent = syncActiveJobStartState(activeJobSummary);
-    if (hasFreshJobStartEvent) {
+    if (hasFreshJobStartEvent && showJobStartedPopup) {
         jobStartedPopupVisibleUntil = Date.now() + jobStartedPopupDurationMs;
     }
     const deliverySummary = buildDeliverySummary(data);
     const hasFreshDeliveryEvent = syncDeliveryCompletionState(deliverySummary);
     if (hasFreshDeliveryEvent) {
         jobStartedPopupVisibleUntil = 0;
-        jobFinishedPopupVisibleUntil = Date.now() + jobFinishedPopupDurationMs;
+        if (showJobFinishedPopup) {
+            jobFinishedPopupVisibleUntil = Date.now() + jobFinishedPopupDurationMs;
+        }
         recordJobHistoryEntry(deliverySummary);
     }
 

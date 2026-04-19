@@ -61,6 +61,10 @@ function dashboard_config_defaults(): array
                 'overspeedToleranceKph' => 2,
                 'trendSensitivityKph' => 0.8,
             ],
+            'popupEvents' => [
+                'showJobStarted' => true,
+                'showJobFinished' => true,
+            ],
             'storageKeys' => [
                 'activeTab' => 'ets2-dashboard-active-tab',
                 'mapPreferences' => 'ets2-dashboard-map-preferences',
