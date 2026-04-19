@@ -52,6 +52,7 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 - Named map selection shared between the hero map and world map, including `Standard` and `ProMods`
 - Automatic fallback-bound switching based on the selected map (`Standard` or `ProMods`)
 - Saved browser preference for the selected map source, including `Standard` and `ProMods`
+- Separate saved zoom and follow-truck browser preferences for each map source, including `Standard` and `ProMods`
 - Configurable tile retry delay when live tile metadata is unavailable
 - Optional tile proxy support through `tile-proxy.php`
 - Tile proxy errors returned in a frontend-readable format for better user feedback
@@ -61,7 +62,8 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 
 - Secondary telemetry page in `infos.php`
 - Tabbed detail views for `Overview`, `Systems`, `World`, and `Debug`
-- Recent-delivery job history in the `Overview` tab, including cargo, route, income, XP, and parking result
+- Recent-delivery job history in the `Overview` tab, including cargo, route, income, XP, parking result, filtering, export, and clear actions
+- Alert-group controls in the `Overview` tab for systems, overspeed, low fuel, fatigue, damage, deadline, status, and fines
 - Direct telemetry URL form for loading other-player telemetry endpoints
 - Truck profile and vehicle identity details
 - Drivetrain, controls, lighting, and trailer status sections

@@ -366,6 +366,116 @@ button:focus-visible,
     gap: 12px;
 }
 
+.alert-settings {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(184, 226, 255, 0.12);
+}
+
+.alert-settings-label {
+    margin: 0 0 10px;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.alert-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+}
+
+.alert-setting-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(184, 226, 255, 0.12);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
+        rgba(9, 18, 30, 0.42);
+    color: var(--text-main);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.alert-setting-toggle input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.job-history-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.job-history-search {
+    flex: 1 1 240px;
+}
+
+.job-history-search input {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(184, 226, 255, 0.14);
+    background: rgba(7, 15, 25, 0.72);
+    color: var(--text-main);
+    font: inherit;
+}
+
+.job-history-search input::placeholder {
+    color: rgba(183, 204, 220, 0.56);
+}
+
+.job-history-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.job-history-action {
+    min-height: 42px;
+    padding: 0 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(184, 226, 255, 0.14);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
+        rgba(9, 18, 30, 0.46);
+    color: var(--text-strong);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.job-history-action:hover {
+    transform: translateY(-1px);
+    border-color: rgba(121, 199, 255, 0.28);
+}
+
+.job-history-action:disabled {
+    opacity: 0.48;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.job-history-action.is-danger {
+    border-color: rgba(255, 112, 80, 0.18);
+    color: #ffd4ca;
+}
+
 .job-history-empty {
     padding: 18px;
     border-radius: 18px;
@@ -381,6 +491,10 @@ button:focus-visible,
     margin-bottom: 6px;
     color: var(--text-strong);
     font-size: 0.96rem;
+}
+
+.job-history-empty code {
+    color: var(--text-main);
 }
 
 .job-history-item {

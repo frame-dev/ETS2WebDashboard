@@ -277,7 +277,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                             <li>The speed ring shows current speed, road speed limit, cruise control, peak, and trend.</li>
                             <li>The route panel shows source, destination, planned distance, ETA, and estimated real time.</li>
                             <li>The job overlay on the map summarizes income, cargo, and weight.</li>
-                            <li>When a new job starts, a small corner popup summarizes cargo, route, income, distance, weight, and deadline.</li>
+                            <li>When a new job starts, a centered popup summarizes cargo, route, income, distance, weight, and deadline.</li>
                             <li>When a delivery finishes, the popup summarizes route, income, XP, distance, and parking result.</li>
                         </ul>
                     </article>

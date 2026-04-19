@@ -26,6 +26,7 @@ const telemetryCacheMultiplier = Math.max(1, readNumberConfig(telemetryPollingCo
 const activeTabStorageKey = (config.storageKeys && config.storageKeys.activeTab) || "ets2-dashboard-active-tab";
 const mapPreferencesStorageKey = (config.storageKeys && config.storageKeys.mapPreferences) || "ets2-dashboard-map-preferences";
 const jobHistoryStorageKey = (config.storageKeys && config.storageKeys.jobHistory) || "ets2-dashboard-job-history";
+const alertPreferencesStorageKey = (config.storageKeys && config.storageKeys.alertPreferences) || "ets2-dashboard-alert-preferences";
 const tileProxyEndpoint = config.tileProxyEndpoint || "tile-proxy.php";
 const tabsRoot = document.querySelector(".section-tabs");
 const routePlannerAverageKph = Number(config.routePlanner?.averageKph) || 63;
@@ -55,6 +56,16 @@ const defaultTileBaseUrlCandidates = [
     "http://127.0.0.1:8081",
 ];
 const defaultTileConfigNames = ["config.json", "TileMapInfo.json"];
+const defaultAlertPreferences = Object.freeze({
+    systems: true,
+    overspeed: true,
+    fuel: true,
+    fatigue: true,
+    damage: true,
+    deadline: true,
+    status: true,
+    fines: true,
+});
 
 function uniqueNonEmptyStrings(values) {
     if (!Array.isArray(values)) {
@@ -289,6 +300,9 @@ const elements = {
     routeStats: document.getElementById("route-stats"),
     jobHistoryCount: document.getElementById("job-history-count"),
     jobHistoryList: document.getElementById("job-history-list"),
+    jobHistoryFilter: document.getElementById("job-history-filter"),
+    jobHistoryExport: document.getElementById("job-history-export"),
+    jobHistoryClear: document.getElementById("job-history-clear"),
     truckStats: document.getElementById("truck-stats"),
     systemsPills: document.getElementById("systems-pills"),
     systemsGauges: document.getElementById("systems-gauges"),
@@ -309,6 +323,7 @@ const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
 const mapZoomButtons = Array.from(document.querySelectorAll("[data-map-zoom]"));
 const heroMapZoomButtons = Array.from(document.querySelectorAll("[data-hero-map-zoom]"));
 const mapSourceSelects = Array.from(document.querySelectorAll("[data-map-source-select]"));
+const alertPreferenceInputs = Array.from(document.querySelectorAll("[data-alert-preference]"));
 const systemLocale = typeof navigator !== "undefined"
     ? (navigator.languages?.[0] || navigator.language || "en-US")
     : "en-US";
@@ -352,6 +367,7 @@ const playersRadiusDefault = Math.max(1, Number(config.playersRadiusDefault) || 
 const playersServerDefault = Math.max(1, Math.floor(Number(config.playersServerDefault) || 50));
 let speedRingPeakKph = 0;
 let speedRingPreviousKph = null;
+let mapSourcePreferences = {};
 let previousActiveJobState = false;
 let previousActiveJobSignature = "";
 let previousJobFinishedState = false;
@@ -363,6 +379,8 @@ let previousJobFinishedSignature = "";
 let jobFinishedPopupHydrated = false;
 let lastHelpTrigger = null;
 let jobHistoryEntries = [];
+let jobHistoryFilterQuery = "";
+let alertPreferences = { ...defaultAlertPreferences };
 const jobStartedPopupDurationMs = 5000;
 const jobFinishedPopupDurationMs = 5000;
 const jobHistoryLimit = 12;
@@ -405,6 +423,118 @@ function closeHelpDialog({ restoreFocus = true } = {}) {
 
     if (restoreFocus && lastHelpTrigger instanceof HTMLElement) {
         lastHelpTrigger.focus();
+    }
+}
+
+function getDefaultMapPreferenceSnapshot() {
+    return {
+        worldZoom: defaultWorldMapZoom,
+        worldFollowTruck: defaultWorldMapFollowTruck,
+        heroZoom: defaultHeroMapZoom,
+        heroFollowTruck: defaultHeroMapFollowTruck,
+    };
+}
+
+function normalizeMapPreferenceSnapshot(value) {
+    const defaults = getDefaultMapPreferenceSnapshot();
+    const worldZoom = getNumber(value?.worldZoom);
+    const heroZoom = getNumber(value?.heroZoom);
+
+    return {
+        worldZoom: worldZoom === null ? defaults.worldZoom : Math.max(0, Math.floor(worldZoom)),
+        worldFollowTruck: typeof value?.worldFollowTruck === "boolean" ? value.worldFollowTruck : defaults.worldFollowTruck,
+        heroZoom: heroZoom === null ? defaults.heroZoom : Math.max(0, Math.floor(heroZoom)),
+        heroFollowTruck: typeof value?.heroFollowTruck === "boolean" ? value.heroFollowTruck : defaults.heroFollowTruck,
+    };
+}
+
+function buildCurrentMapPreferenceSnapshot() {
+    return normalizeMapPreferenceSnapshot({
+        worldZoom: tileMapState.zoom,
+        worldFollowTruck: tileMapState.followTruck,
+        heroZoom: heroMapState.zoom,
+        heroFollowTruck: heroMapState.followTruck,
+    });
+}
+
+function rememberCurrentMapSourcePreferences(sourceId = selectedMapSourceId) {
+    if (typeof sourceId !== "string" || sourceId.trim() === "") {
+        return;
+    }
+
+    mapSourcePreferences[sourceId] = buildCurrentMapPreferenceSnapshot();
+}
+
+function applyMapPreferencesForSource(sourceId) {
+    const snapshot = normalizeMapPreferenceSnapshot(mapSourcePreferences[sourceId] || getDefaultMapPreferenceSnapshot());
+    tileMapState.zoom = snapshot.worldZoom;
+    tileMapState.followTruck = snapshot.worldFollowTruck;
+    heroMapState.zoom = snapshot.heroZoom;
+    heroMapState.followTruck = snapshot.heroFollowTruck;
+}
+
+function normalizeAlertPreferences(rawPreferences) {
+    const nextPreferences = { ...defaultAlertPreferences };
+    if (!rawPreferences || typeof rawPreferences !== "object") {
+        return nextPreferences;
+    }
+
+    Object.keys(defaultAlertPreferences).forEach((key) => {
+        if (typeof rawPreferences[key] === "boolean") {
+            nextPreferences[key] = rawPreferences[key];
+        }
+    });
+
+    return nextPreferences;
+}
+
+function persistAlertPreferences() {
+    try {
+        window.localStorage.setItem(alertPreferencesStorageKey, JSON.stringify(alertPreferences));
+    } catch (error) {
+        // Ignore storage failures to keep runtime behavior stable.
+    }
+}
+
+function loadAlertPreferences() {
+    try {
+        const raw = window.localStorage.getItem(alertPreferencesStorageKey);
+        if (!raw) {
+            alertPreferences = { ...defaultAlertPreferences };
+            return;
+        }
+
+        alertPreferences = normalizeAlertPreferences(JSON.parse(raw));
+    } catch (error) {
+        alertPreferences = { ...defaultAlertPreferences };
+    }
+}
+
+function renderAlertPreferenceControls() {
+    alertPreferenceInputs.forEach((input) => {
+        const key = input instanceof HTMLInputElement ? input.dataset.alertPreference : "";
+        if (!(input instanceof HTMLInputElement) || !key) {
+            return;
+        }
+
+        input.checked = alertPreferences[key] !== false;
+    });
+}
+
+function setAlertPreference(key, enabled) {
+    if (!Object.prototype.hasOwnProperty.call(defaultAlertPreferences, key)) {
+        return;
+    }
+
+    alertPreferences = {
+        ...alertPreferences,
+        [key]: enabled,
+    };
+    persistAlertPreferences();
+    renderAlertPreferenceControls();
+
+    if (latestTelemetryData) {
+        renderAlerts(latestTelemetryData);
     }
 }
 
@@ -455,27 +585,66 @@ function persistJobHistory() {
     }
 }
 
+function getFilteredJobHistoryEntries() {
+    const normalizedQuery = jobHistoryFilterQuery.trim().toLowerCase();
+    if (normalizedQuery === "") {
+        return jobHistoryEntries;
+    }
+
+    return jobHistoryEntries.filter((entry) => {
+        const haystack = [
+            entry.cargo,
+            entry.route,
+            entry.incomeLabel,
+            entry.xpLabel,
+            entry.parkingLabel,
+            entry.distanceLabel,
+            entry.deliveryTimeLabel,
+        ]
+            .map((value) => String(value || "").toLowerCase())
+            .join(" ");
+
+        return haystack.includes(normalizedQuery);
+    });
+}
+
 function renderJobHistory() {
     if (!elements.jobHistoryList) {
         return;
     }
 
+    const filteredEntries = getFilteredJobHistoryEntries();
     if (elements.jobHistoryCount) {
-        const count = jobHistoryEntries.length;
-        elements.jobHistoryCount.textContent = `${count} ${count === 1 ? "entry" : "entries"}`;
+        const count = filteredEntries.length;
+        if (jobHistoryFilterQuery.trim() !== "") {
+            elements.jobHistoryCount.textContent = `${count} of ${jobHistoryEntries.length} entries`;
+        } else {
+            elements.jobHistoryCount.textContent = `${count} ${count === 1 ? "entry" : "entries"}`;
+        }
     }
 
-    if (jobHistoryEntries.length === 0) {
+    if (elements.jobHistoryClear instanceof HTMLButtonElement) {
+        elements.jobHistoryClear.disabled = jobHistoryEntries.length === 0;
+    }
+
+    if (elements.jobHistoryExport instanceof HTMLButtonElement) {
+        elements.jobHistoryExport.disabled = jobHistoryEntries.length === 0;
+    }
+
+    if (filteredEntries.length === 0) {
+        const emptyMessage = jobHistoryEntries.length === 0
+            ? "Complete a job and it will appear here with cargo, route, income, XP, and parking result."
+            : `No entries match <code>${escapeHtml(jobHistoryFilterQuery.trim())}</code>.`;
         elements.jobHistoryList.innerHTML = `
             <div class="job-history-empty">
-                <strong>No deliveries recorded yet</strong>
-                <span>Complete a job and it will appear here with cargo, route, income, XP, and parking result.</span>
+                <strong>${jobHistoryEntries.length === 0 ? "No deliveries recorded yet" : "No matching deliveries"}</strong>
+                <span>${emptyMessage}</span>
             </div>
         `;
         return;
     }
 
-    elements.jobHistoryList.innerHTML = jobHistoryEntries.map((entry) => `
+    elements.jobHistoryList.innerHTML = filteredEntries.map((entry) => `
         <article class="job-history-item">
             <div class="job-history-header">
                 <div>
@@ -495,6 +664,37 @@ function renderJobHistory() {
             </div>
         </article>
     `).join("");
+}
+
+function setJobHistoryFilterQuery(value) {
+    jobHistoryFilterQuery = String(value || "");
+    renderJobHistory();
+}
+
+function clearJobHistory() {
+    jobHistoryEntries = [];
+    previousJobFinishedSignature = "";
+    persistJobHistory();
+    renderJobHistory();
+}
+
+function exportJobHistory() {
+    if (jobHistoryEntries.length === 0) {
+        return;
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const blob = new Blob([JSON.stringify(jobHistoryEntries, null, 2)], { type: "application/json" });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `ets2-job-history-${timestamp}.json`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+    }, 0);
 }
 
 function isSimulatorRunningAndConnected(data = {}) {
@@ -730,7 +930,9 @@ function setSelectedMapSource(sourceId, persistPreference = true) {
         return;
     }
 
+    rememberCurrentMapSourcePreferences(selectedMapSourceId);
     selectedMapSourceId = source.id;
+    applyMapPreferencesForSource(source.id);
     clearTileMapRetryTimer();
     tileMapState.initializationToken += 1;
     resetTileMapRuntime(source);
@@ -1272,12 +1474,10 @@ function handleGlobalMapShortcuts(event) {
 
 function persistMapPreferences() {
     try {
+        rememberCurrentMapSourcePreferences();
         window.localStorage.setItem(mapPreferencesStorageKey, JSON.stringify({
             mapSourceId: selectedMapSourceId,
-            worldZoom: tileMapState.zoom,
-            worldFollowTruck: tileMapState.followTruck,
-            heroZoom: heroMapState.zoom,
-            heroFollowTruck: heroMapState.followTruck,
+            sourcePreferences: mapSourcePreferences,
             playersOverlayEnabled,
             remoteTelemetryEnabled,
         }));
@@ -1295,9 +1495,17 @@ function loadMapPreferences() {
 
         const parsed = JSON.parse(raw);
         hasLoadedMapPreferences = true;
-        const worldZoom = getNumber(parsed?.worldZoom);
-        const heroZoom = getNumber(parsed?.heroZoom);
         const storedMapSourceId = typeof parsed?.mapSourceId === "string" ? parsed.mapSourceId.trim() : "";
+        const parsedSourcePreferences = parsed?.sourcePreferences && typeof parsed.sourcePreferences === "object"
+            ? parsed.sourcePreferences
+            : {};
+
+        mapSourcePreferences = {};
+        availableMapSources.forEach((source) => {
+            if (parsedSourcePreferences && typeof parsedSourcePreferences[source.id] === "object") {
+                mapSourcePreferences[source.id] = normalizeMapPreferenceSnapshot(parsedSourcePreferences[source.id]);
+            }
+        });
 
         if (storedMapSourceId !== "" && getMapSourceById(storedMapSourceId)) {
             selectedMapSourceId = storedMapSourceId;
@@ -1307,21 +1515,16 @@ function loadMapPreferences() {
             tileMapState.sourceLabel = `${tileMapState.sourceName} • Static preview`;
         }
 
-        if (worldZoom !== null) {
-            tileMapState.zoom = Math.floor(worldZoom);
+        if (Object.keys(mapSourcePreferences).length === 0) {
+            mapSourcePreferences[selectedMapSourceId] = normalizeMapPreferenceSnapshot({
+                worldZoom: parsed?.worldZoom,
+                worldFollowTruck: parsed?.worldFollowTruck,
+                heroZoom: parsed?.heroZoom,
+                heroFollowTruck: parsed?.heroFollowTruck,
+            });
         }
 
-        if (heroZoom !== null) {
-            heroMapState.zoom = Math.floor(heroZoom);
-        }
-
-        if (typeof parsed?.worldFollowTruck === "boolean") {
-            tileMapState.followTruck = parsed.worldFollowTruck;
-        }
-
-        if (typeof parsed?.heroFollowTruck === "boolean") {
-            heroMapState.followTruck = parsed.heroFollowTruck;
-        }
+        applyMapPreferencesForSource(selectedMapSourceId);
 
         if (typeof parsed?.playersOverlayEnabled === "boolean") {
             playersOverlayEnabled = parsed.playersOverlayEnabled;
@@ -2225,6 +2428,30 @@ function createAlertItem(title, detail, tone = "good") {
             <span>${escapeHtml(detail)}</span>
         </div>
     `;
+}
+
+function isAlertGroupEnabled(key) {
+    return alertPreferences[key] !== false;
+}
+
+function getGameMinutesUntil(targetTime, currentTime) {
+    if (
+        typeof targetTime !== "string"
+        || targetTime.trim() === ""
+        || targetTime.startsWith("0001-01-01T00:00:00")
+        || typeof currentTime !== "string"
+        || currentTime.trim() === ""
+    ) {
+        return null;
+    }
+
+    const targetDate = new Date(targetTime);
+    const currentDate = new Date(currentTime);
+    if (Number.isNaN(targetDate.getTime()) || Number.isNaN(currentDate.getTime())) {
+        return null;
+    }
+
+    return (targetDate.getTime() - currentDate.getTime()) / 60000;
 }
 
 function createMetaPill(label, value) {
@@ -3324,35 +3551,106 @@ function renderAlerts(data) {
     const truck = data.truck || {};
     const gameplay = data.gameplay || {};
     const game = data.game || {};
+    const job = data.job || {};
+    const navigation = data.navigation || {};
+    const attachedTrailer = (data.trailers || []).find((trailer) => trailer && trailer.attached);
     const alerts = [];
+    const roadLimitKph = normalizeRoadLimitKph(navigation.speedLimit);
+    const speedKph = Math.max(0, getNumber(truck.speed) ?? 0);
+    const fuel = getNumber(truck.fuel);
+    const fuelCapacity = getNumber(truck.fuelCapacity);
+    const fuelRatio = fuel !== null && fuelCapacity && fuelCapacity > 0 ? fuel / fuelCapacity : null;
+    const fuelRangeKm = getNumber(truck.fuelRange);
+    const restMinutes = getGameMinutesUntil(game.nextRestStopTime, game.time);
+    const deadlineMinutes = getTelemetryDurationMinutes(job.remainingTime);
+    const trailerCargoDamagePercent = Math.max(0, Number(attachedTrailer?.cargoDamage || 0) * 100);
+    const maxTrailerWearPercent = Math.max(
+        Number(attachedTrailer?.wearChassis || 0) * 100,
+        Number(attachedTrailer?.wearWheels || 0) * 100,
+        Number(attachedTrailer?.wearBody || 0) * 100,
+    );
+    const hasDangerousOverspeed = roadLimitKph !== null && speedKph > (roadLimitKph + speedRingOverspeedToleranceKph);
 
-    if (truck.oilPressureWarningOn) {
+    if (isAlertGroupEnabled("systems") && truck.oilPressureWarningOn) {
         alerts.push(createAlertItem("Oil pressure warning", `Threshold ${formatPressure(truck.oilPressureWarningValue)}`, "danger"));
     }
-    if (truck.airPressureEmergencyOn) {
+    if (isAlertGroupEnabled("systems") && truck.airPressureEmergencyOn) {
         alerts.push(createAlertItem("Air emergency", `Emergency value ${formatPressure(truck.airPressureEmergencyValue)}`, "danger"));
     }
-    if (truck.batteryVoltageWarningOn) {
+    if (isAlertGroupEnabled("systems") && truck.batteryVoltageWarningOn) {
         alerts.push(createAlertItem("Battery warning", `Threshold ${formatVoltage(truck.batteryVoltageWarningValue)}`, "warning"));
     }
-    if (truck.waterTemperatureWarningOn) {
+    if (isAlertGroupEnabled("systems") && truck.waterTemperatureWarningOn) {
         alerts.push(createAlertItem("Cooling warning", `Water threshold ${formatTemperature(truck.waterTemperatureWarningValue)}`, "warning"));
     }
-    if (gameplay.fined) {
+
+    if (isAlertGroupEnabled("overspeed") && hasDangerousOverspeed) {
+        alerts.push(createAlertItem(
+            "Overspeed",
+            `Limit ${formatRoadSpeed(roadLimitKph)} km/h • Current ${formatTruckSpeed(truck.speed)} km/h`,
+            speedKph > (roadLimitKph + speedRingOverspeedToleranceKph + 10) ? "danger" : "warning",
+        ));
+    }
+    if (
+        isAlertGroupEnabled("fuel")
+        && (
+            (fuelRatio !== null && fuelRatio <= 0.15)
+            || (fuelRangeKm !== null && fuelRangeKm <= 150)
+        )
+    ) {
+        alerts.push(createAlertItem(
+            "Low fuel reserve",
+            `${fuelRatio === null ? "Fuel --" : formatPercent(fuelRatio, 0, true)} tank • ${formatDistanceKm(fuelRangeKm)} range`,
+            fuelRatio !== null && fuelRatio <= 0.08 ? "danger" : "warning",
+        ));
+    }
+    if (isAlertGroupEnabled("fatigue") && restMinutes !== null && restMinutes <= 90) {
+        alerts.push(createAlertItem(
+            "Rest stop approaching",
+            `Next rest in ${formatDurationMinutes(restMinutes)} • ${formatGameEventTime(game.nextRestStopTime)}`,
+            restMinutes <= 30 ? "danger" : "warning",
+        ));
+    }
+    if (
+        isAlertGroupEnabled("damage")
+        && (
+            trailerCargoDamagePercent > 0
+            || maxTrailerWearPercent >= 10
+        )
+    ) {
+        alerts.push(createAlertItem(
+            "Damage detected",
+            `Cargo ${formatNumber(trailerCargoDamagePercent, 1)}% • Wear ${formatNumber(maxTrailerWearPercent, 1)}%`,
+            trailerCargoDamagePercent >= 2 || maxTrailerWearPercent >= 20 ? "danger" : "warning",
+        ));
+    }
+    if (isAlertGroupEnabled("deadline") && gameplay.onJob && deadlineMinutes !== null && deadlineMinutes <= 360) {
+        alerts.push(createAlertItem(
+            "Deadline risk",
+            `Time left ${formatDurationMinutes(deadlineMinutes)} • Due ${formatGameEventTime(job.deadlineTime)}`,
+            deadlineMinutes <= 90 ? "danger" : "warning",
+        ));
+    }
+    if (isAlertGroupEnabled("fines") && gameplay.fined) {
         alerts.push(createAlertItem("Fine issued", `${formatNumber(gameplay.finedDetails?.amount, 0)} • ${gameplay.finedDetails?.offence || "Unknown offence"}`, "warning"));
     }
-    if (game.paused) {
+    if (isAlertGroupEnabled("status") && game.paused) {
         alerts.push(createAlertItem("Simulation paused", "Telemetry is live but the game is paused", "neutral"));
     }
-    if (truck.parkBrakeOn) {
+    if (isAlertGroupEnabled("status") && truck.parkBrakeOn) {
         alerts.push(createAlertItem("Parking brake engaged", "Truck is being held in place", "neutral"));
     }
-    if (!truck.engineOn) {
+    if (isAlertGroupEnabled("status") && !truck.engineOn) {
         alerts.push(createAlertItem("Engine off", "Restart required for motion and powertrain response", "neutral"));
     }
 
     if (alerts.length === 0) {
-        alerts.push(createAlertItem("No active warnings", "Truck systems look healthy right now", "good"));
+        const enabledAlertGroups = Object.values(alertPreferences).filter(Boolean).length;
+        alerts.push(createAlertItem(
+            enabledAlertGroups === 0 ? "Alerts hidden" : "No active warnings",
+            enabledAlertGroups === 0 ? "Enable one or more alert groups in the info workspace to see warnings here." : "Truck systems look healthy right now",
+            enabledAlertGroups === 0 ? "neutral" : "good",
+        ));
     }
 
     if (elements.alertFeed) {
@@ -4146,6 +4444,20 @@ mapSourceSelects.forEach((select) => {
     });
 });
 
+alertPreferenceInputs.forEach((input) => {
+    if (!(input instanceof HTMLInputElement)) {
+        return;
+    }
+
+    input.addEventListener("change", (event) => {
+        const target = event.target instanceof HTMLInputElement ? event.target : null;
+        const key = target?.dataset.alertPreference || "";
+        if (key) {
+            setAlertPreference(key, target.checked);
+        }
+    });
+});
+
 if (elements.truckersMpToggle) {
     bindMapControlPress(elements.truckersMpToggle, () => {
         setPlayersOverlayEnabled(!playersOverlayEnabled);
@@ -4171,6 +4483,32 @@ if (elements.konvoyServerForm) {
             remoteTelemetryPlayers = [];
             renderPlayersOnMap();
             renderPlayersOnHeroMap();
+        }
+    });
+}
+
+if (elements.jobHistoryFilter instanceof HTMLInputElement) {
+    elements.jobHistoryFilter.addEventListener("input", (event) => {
+        const target = event.target instanceof HTMLInputElement ? event.target : null;
+        setJobHistoryFilterQuery(target?.value || "");
+    });
+}
+
+if (elements.jobHistoryExport instanceof HTMLButtonElement) {
+    elements.jobHistoryExport.addEventListener("click", () => {
+        exportJobHistory();
+    });
+}
+
+if (elements.jobHistoryClear instanceof HTMLButtonElement) {
+    elements.jobHistoryClear.addEventListener("click", () => {
+        if (jobHistoryEntries.length === 0) {
+            return;
+        }
+
+        const shouldClear = window.confirm("Clear the saved delivery history from this browser?");
+        if (shouldClear) {
+            clearJobHistory();
         }
     });
 }
@@ -4231,6 +4569,7 @@ try {
 }
 
 loadMapPreferences();
+loadAlertPreferences();
 loadJobHistory();
 syncMapSourceControls();
 resetTileMapRuntime(getSelectedMapSource());
@@ -4238,6 +4577,7 @@ updateTruckersMpToggle();
 updateRemoteTelemetryToggle();
 syncRemoteTelemetryInput();
 updateRemoteTelemetryStatus();
+renderAlertPreferenceControls();
 renderJobHistory();
 loadCityLocalizations();
 

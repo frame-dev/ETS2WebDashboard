@@ -29,10 +29,11 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes t
 - Delivery-complete popup with income, XP, trip distance, and parking result
 - Direct dashboard links to `settings.php` and the `infos.php` workspace
 - Expanded information page in `infos.php` with `Overview`, `Systems`, `World`, and `Debug` tabs
-- Recent-delivery job history in `infos.php` with cargo, route, income, XP, parking result, and timing details
+- Recent-delivery job history in `infos.php` with cargo, route, income, XP, parking result, timing details, filtering, export, and clear actions
+- Alert visibility controls in `infos.php` for systems, overspeed, low fuel, fatigue, damage, deadline, status, and fines
 - Direct telemetry URL form in `infos.php` for loading other players from remote telemetry endpoints
 - System and vehicle detail views for truck profile, health, drivetrain, trailer state, controls, lighting, world position, events, and raw telemetry JSON
-- Interactive map system with saved browser preferences, remembered `Standard` or `ProMods` map selection, automatic per-source fallback bounds, tile config discovery, overzoom support, and static fallback rendering
+- Interactive map system with saved browser preferences, remembered `Standard` or `ProMods` map selection, separate saved zoom and follow settings per map source, automatic per-source fallback bounds, tile config discovery, overzoom support, and static fallback rendering
 - Optional tile proxying through `tile-proxy.php` for approved map tile sources
 - Telemetry backend with upstream fetch control, timeout handling, JSON output for polling, local cache fallback, cache TTL control, remote-player aggregation, direct-URL persistence, and clearer fetch-error reporting
 - Integrated snapshot pipeline with timed capture, saved runtime state, duplicate snapshot avoidance, optional pretty-printed output, and configurable snapshot filename patterns
@@ -104,7 +105,9 @@ It focuses on fast, at-a-glance driving information:
 
 This page is useful when you want more detailed truck, trailer, controls, events, and raw payload visibility than the main dashboard shows.
 
-It also includes a recent-deliveries history panel so completed jobs can be reviewed without adding extra clutter to the main dashboard.
+It also includes a recent-deliveries history panel so completed jobs can be reviewed without adding extra clutter to the main dashboard. That history can be filtered, exported to JSON, or cleared from browser storage.
+
+It also includes alert visibility controls for groups such as systems, overspeed, low fuel, fatigue, damage, deadline, status, and fines. Those preferences are shared with the rest of the dashboard through browser storage.
 
 It also includes a direct telemetry URL form for other players. Enter one or more comma-separated telemetry endpoints such as:
 
@@ -243,6 +246,8 @@ return [
         'storageKeys' => [
             'activeTab' => 'ets2-dashboard-active-tab',
             'mapPreferences' => 'ets2-dashboard-map-preferences',
+            'jobHistory' => 'ets2-dashboard-job-history',
+            'alertPreferences' => 'ets2-dashboard-alert-preferences',
         ],
         'mapDefaults' => [
             'worldZoom' => 4,
@@ -354,7 +359,7 @@ The map overlays can display:
 - TruckersMP area players
 - direct remote telemetry players from saved URLs
 
-The dashboard can expose named map sources such as `Standard` and `ProMods`, each with its own tile base URLs, config discovery order, retry timing, and fallback bounds. The selected map source is shared between the hero map and world map and remembered in browser storage.
+The dashboard can expose named map sources such as `Standard` and `ProMods`, each with its own tile base URLs, config discovery order, retry timing, and fallback bounds. The selected map source is shared between the hero map and world map and remembered in browser storage. Zoom and follow-truck preferences are also stored separately for each map source, so switching between `Standard` and `ProMods` can restore different preferred views.
 
 The main dashboard also uses centered map event popups for live job transitions. A new job shows a short popup with cargo and route details, and a finished delivery shows a completion popup. These are triggered by live telemetry state changes, not by reloading the page.
 

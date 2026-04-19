@@ -139,6 +139,43 @@ $json_flags = JSON_UNESCAPED_SLASHES
                             </div>
                         </div>
                         <div class="alert-feed" id="alert-feed"></div>
+                        <div class="alert-settings">
+                            <p class="alert-settings-label">Visible alert groups</p>
+                            <div class="alert-settings-grid" id="alert-settings">
+                                <label class="alert-setting-toggle">
+                                    <input type="checkbox" id="alert-setting-systems" data-alert-preference="systems" checked>
+                                    <span>Systems</span>
+                                </label>
+                                <label class="alert-setting-toggle">
+                                    <input type="checkbox" id="alert-setting-overspeed" data-alert-preference="overspeed" checked>
+                                    <span>Overspeed</span>
+                                </label>
+                                <label class="alert-setting-toggle">
+                                    <input type="checkbox" id="alert-setting-fuel" data-alert-preference="fuel" checked>
+                                    <span>Low Fuel</span>
+                                </label>
+                                <label class="alert-setting-toggle">
+                                    <input type="checkbox" id="alert-setting-fatigue" data-alert-preference="fatigue" checked>
+                                    <span>Fatigue</span>
+                                </label>
+                                <label class="alert-setting-toggle">
+                                    <input type="checkbox" id="alert-setting-damage" data-alert-preference="damage" checked>
+                                    <span>Damage</span>
+                                </label>
+                                <label class="alert-setting-toggle">
+                                    <input type="checkbox" id="alert-setting-deadline" data-alert-preference="deadline" checked>
+                                    <span>Deadline</span>
+                                </label>
+                                <label class="alert-setting-toggle">
+                                    <input type="checkbox" id="alert-setting-status" data-alert-preference="status" checked>
+                                    <span>Status</span>
+                                </label>
+                                <label class="alert-setting-toggle">
+                                    <input type="checkbox" id="alert-setting-fines" data-alert-preference="fines" checked>
+                                    <span>Fines</span>
+                                </label>
+                            </div>
+                        </div>
                     </article>
                 </div>
 
@@ -149,6 +186,16 @@ $json_flags = JSON_UNESCAPED_SLASHES
                             <h2>Job History</h2>
                         </div>
                         <span class="panel-badge" id="job-history-count">0 entries</span>
+                    </div>
+                    <div class="job-history-toolbar">
+                        <label class="job-history-search" for="job-history-filter">
+                            <span class="visually-hidden">Filter job history by cargo, route, or city</span>
+                            <input type="search" id="job-history-filter" placeholder="Filter by cargo or city" autocomplete="off" spellcheck="false">
+                        </label>
+                        <div class="job-history-actions">
+                            <button class="job-history-action" type="button" id="job-history-export">Export JSON</button>
+                            <button class="job-history-action is-danger" type="button" id="job-history-clear">Clear history</button>
+                        </div>
                     </div>
                     <div class="job-history-list" id="job-history-list" aria-live="polite"></div>
                 </article>
