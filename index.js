@@ -1987,6 +1987,15 @@ function formatCoordinate(value) {
     return formatNumber(value, 2);
 }
 
+function formatHeadingDegrees(value) {
+    const headingDegrees = getScsHeadingDegrees(value);
+    if (headingDegrees === null) {
+        return "--";
+    }
+
+    return `${formatNumber(headingDegrees, 1)} deg`;
+}
+
 function formatAngleDegrees(value) {
     const parsed = getNumber(value);
     if (parsed === null) {
@@ -2003,6 +2012,30 @@ function normalizeDegrees(value) {
     }
 
     return ((parsed % 360) + 360) % 360;
+}
+
+function getScsHeadingDegrees(value) {
+    const parsed = getNumber(value);
+    if (parsed === null) {
+        return null;
+    }
+
+    // SCS stores heading as a turn fraction where 0=north and values
+    // increase counter-clockwise: 0.25=west, 0.5=south, 0.75=east.
+    return normalizeDegrees(parsed * -360);
+}
+
+function getScsHeadingWorldVector(value) {
+    const parsed = getNumber(value);
+    if (parsed === null) {
+        return null;
+    }
+
+    const headingRadians = parsed * Math.PI * 2;
+    return {
+        x: -Math.sin(headingRadians),
+        z: Math.cos(headingRadians),
+    };
 }
 
 function getCurrentFallbackBounds() {
@@ -2107,8 +2140,8 @@ function projectPointWithinBounds(x, z, bounds) {
     };
 }
 
-function getMarkerHeadingDegrees(headingRadians, x, z) {
-    const heading = getNumber(headingRadians);
+function getMarkerHeadingDegrees(headingValue, x, z) {
+    const heading = getNumber(headingValue);
     const originX = getNumber(x);
     const originZ = getNumber(z);
     if (heading === null) {
@@ -2116,16 +2149,20 @@ function getMarkerHeadingDegrees(headingRadians, x, z) {
     }
 
     if (originX === null || originZ === null) {
-        return normalizeDegrees((heading * 180) / Math.PI);
+        return getScsHeadingDegrees(heading) ?? 0;
     }
 
     // Use a longer forward sample so the projected map angle stays stable
     // even when the tile projection compresses world-space movement.
     const forwardSampleDistance = 96;
+    const forwardVector = getScsHeadingWorldVector(heading);
+    if (!forwardVector) {
+        return getScsHeadingDegrees(heading) ?? 0;
+    }
     const originPoint = getMapProjectionPoint(originX, originZ);
     const forwardPoint = getMapProjectionPoint(
-        originX + (Math.sin(heading) * forwardSampleDistance),
-        originZ + (Math.cos(heading) * forwardSampleDistance),
+        originX + (forwardVector.x * forwardSampleDistance),
+        originZ + (forwardVector.z * forwardSampleDistance),
     );
 
     if (originPoint && forwardPoint) {
@@ -2136,7 +2173,7 @@ function getMarkerHeadingDegrees(headingRadians, x, z) {
         }
     }
 
-    return normalizeDegrees((heading * 180) / Math.PI);
+    return getScsHeadingDegrees(heading) ?? 0;
 }
 
 function formatGameClock(value) {
@@ -3732,7 +3769,7 @@ function renderTrailer(data) {
                     ${createStatCard("Trailer", attachedTrailer.name || "Unnamed trailer", attachedTrailer.id || "No trailer id")}
                     ${createStatCard("Brand", attachedTrailer.brand || "Generic", attachedTrailer.brandId || "No brand id")}
                     ${createStatCard("Plate", attachedTrailer.licensePlate || "--", attachedTrailer.licensePlateCountry || "No country")}
-                    ${createStatCard("Placement", `${formatCoordinate(attachedTrailer.placement?.x)}, ${formatCoordinate(attachedTrailer.placement?.z)}`, `Heading ${formatAngleDegrees(attachedTrailer.placement?.heading)}`)}
+                    ${createStatCard("Placement", `${formatCoordinate(attachedTrailer.placement?.x)}, ${formatCoordinate(attachedTrailer.placement?.z)}`, `Heading ${formatHeadingDegrees(attachedTrailer.placement?.heading)}`)}
                 </div>
             `;
         }
@@ -3763,7 +3800,7 @@ function renderWorld(data) {
             createStatCard("Game clock", formatGameClock(game.time), `Time scale ${formatNumber(game.timeScale, 1)}`),
             createStatCard("Rest stop", formatGameEventTime(game.nextRestStopTime), "In-game rest planning"),
             createStatCard("Coordinates", `${formatCoordinate(truck.placement?.x)}, ${formatCoordinate(truck.placement?.z)}`, `Height ${formatCoordinate(truck.placement?.y)}`),
-            createStatCard("Orientation", formatAngleDegrees(truck.placement?.heading), `Pitch ${formatAngleDegrees(truck.placement?.pitch)} • Roll ${formatAngleDegrees(truck.placement?.roll)}`),
+            createStatCard("Orientation", formatHeadingDegrees(truck.placement?.heading), `Pitch ${formatAngleDegrees(truck.placement?.pitch)} • Roll ${formatAngleDegrees(truck.placement?.roll)}`),
             createStatCard("Acceleration", `${formatNumber(truck.acceleration?.x, 3)}, ${formatNumber(truck.acceleration?.z, 3)}`, `Vertical ${formatNumber(truck.acceleration?.y, 3)}`),
             createStatCard("Cabin offset", `${formatCoordinate(truck.cabin?.x)}, ${formatCoordinate(truck.cabin?.z)}`, `Head ${formatCoordinate(truck.head?.x)}, ${formatCoordinate(truck.head?.z)}`),
             createStatCard("Hook point", `${formatCoordinate(truck.hook?.x)}, ${formatCoordinate(truck.hook?.z)}`, `Y ${formatCoordinate(truck.hook?.y)}`),
@@ -4131,7 +4168,7 @@ function renderMap(data) {
         elements.mapMeta.innerHTML = [
             createMetaPill("X", formatCoordinate(x)),
             createMetaPill("Z", formatCoordinate(z)),
-            createMetaPill("Heading", formatAngleDegrees(heading)),
+            createMetaPill("Heading", formatHeadingDegrees(heading)),
             createMetaPill("Map", tileMapState.initialized ? `${tileMapState.sourceName} z${tileMapState.zoom}` : `${tileMapState.sourceName} preview`),
         ].join("");
     }
