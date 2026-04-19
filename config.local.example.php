@@ -82,5 +82,35 @@ return [
             'overzoomSteps' => 3,
             'retryDelayMs' => 8000,
         ],
+        'mapSources' => [
+            [
+                'id' => 'standard',
+                'name' => 'Standard',
+                'baseUrlCandidates' => ['http://10.147.17.64/tiles/', 'tiles', 'maps', 'http://127.0.0.1:8081'],
+                'configNames' => ['TileMapInfo.json', 'config.json'],
+                'mapBounds' => [
+                    'minX' => -94621.8047,
+                    'maxX' => 79370.13,
+                    'minZ' => -80374.9453,
+                    'maxZ' => 93616.99,
+                ],
+                'overzoomSteps' => 3,
+                'retryDelayMs' => 8000,
+            ],
+            [
+                'id' => 'promods',
+                'name' => 'ProMods',
+                'baseUrlCandidates' => ['http://10.147.17.64/tilespromods/'],
+                'configNames' => ['TileMapInfo.json', 'config.json'],
+                'mapBounds' => [
+                    'minX' => -135110.156,
+                    'maxX' => 168923.75,
+                    'minZ' => -190095.016,
+                    'maxZ' => 113938.891,
+                ],
+                'overzoomSteps' => 3,
+                'retryDelayMs' => 8000,
+            ],
+        ],
     ],
 ];

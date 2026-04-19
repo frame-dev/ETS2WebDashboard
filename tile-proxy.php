@@ -80,6 +80,34 @@ function tile_proxy_url_is_allowed(string $requestUrl, array $allowedBaseUrls): 
     return false;
 }
 
+function tile_proxy_allowed_base_urls(): array
+{
+    $allowedBaseUrls = dashboard_config_value('frontend.mapTiles.baseUrlCandidates', []);
+    $normalized = [];
+
+    if (is_array($allowedBaseUrls)) {
+        foreach ($allowedBaseUrls as $baseUrl) {
+            if (is_string($baseUrl) && trim($baseUrl) !== '') {
+                $normalized[] = trim($baseUrl);
+            }
+        }
+    }
+
+    $mapSources = dashboard_config_value('frontend.mapSources', []);
+    if (is_array($mapSources)) {
+        foreach ($mapSources as $source) {
+            $baseUrlCandidates = is_array($source['baseUrlCandidates'] ?? null) ? $source['baseUrlCandidates'] : [];
+            foreach ($baseUrlCandidates as $baseUrl) {
+                if (is_string($baseUrl) && trim($baseUrl) !== '') {
+                    $normalized[] = trim($baseUrl);
+                }
+            }
+        }
+    }
+
+    return array_values(array_unique($normalized));
+}
+
 function tile_proxy_forward_header(string $headerLine): void
 {
     $allowedHeaders = [
@@ -163,9 +191,9 @@ if ($requestUrl === '') {
     tile_proxy_respond_error(400, 'Missing tile URL.', 'Pass the target tile or config URL in the url query parameter.');
 }
 
-$allowedBaseUrls = dashboard_config_value('frontend.mapTiles.baseUrlCandidates', []);
+$allowedBaseUrls = tile_proxy_allowed_base_urls();
 if (!is_array($allowedBaseUrls) || !tile_proxy_url_is_allowed($requestUrl, $allowedBaseUrls)) {
-    tile_proxy_respond_error(403, 'Tile URL is not allowed.', 'Add the matching base URL to frontend.mapTiles.baseUrlCandidates in your dashboard config.');
+    tile_proxy_respond_error(403, 'Tile URL is not allowed.', 'Add the matching base URL to frontend.mapTiles.baseUrlCandidates or frontend.mapSources in your dashboard config.');
 }
 
 $timeoutSeconds = max(1.0, ((int) dashboard_config_value('telemetry.requestTimeoutMs', 4500)) / 1000);

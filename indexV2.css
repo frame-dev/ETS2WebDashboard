@@ -115,16 +115,16 @@ noscript p {
     position: relative;
     width: min(1380px, calc(100% - 28px));
     margin: 14px auto;
-    padding-top: 22px;
+    padding-top: 18px;
 }
 
 .top-toolbar {
     display: flex;
-    padding-right: 15px;
+    flex-wrap: wrap;
     align-items: stretch;
-    justify-content: flex-end;
-    gap: 4px;
-    margin-bottom: -90px;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
 }
 
 .toolbar-toggle-button {
@@ -196,6 +196,39 @@ noscript p {
     transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
+.help-link {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 156px;
+    flex: 0 0 auto;
+    padding: 11px 14px 11px 12px;
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--panel-radius-sm);
+    background:
+        linear-gradient(180deg, rgba(14, 28, 46, 0.86), rgba(8, 18, 31, 0.72)),
+        radial-gradient(circle at top left, rgba(255, 191, 105, 0.18), transparent 56%);
+    color: var(--text-strong);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    backdrop-filter: blur(var(--glass-blur-strength)) saturate(135%);
+    box-shadow:
+        var(--glass-shadow),
+        var(--glass-highlight);
+    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.help-link:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 191, 105, 0.34);
+    box-shadow:
+        0 24px 52px rgba(0, 0, 0, 0.38),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
 .settings-link:hover {
     transform: translateY(-1px);
     border-color: rgba(84, 239, 199, 0.3);
@@ -216,6 +249,23 @@ noscript p {
         linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
     color: transparent;
     overflow: hidden;
+}
+
+.help-link-icon {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 auto;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 214, 153, 0.18);
+    background:
+        radial-gradient(circle at 30% 30%, rgba(255, 191, 105, 0.28), transparent 50%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    color: #fff5df;
+    font-size: 1.18rem;
+    font-weight: 800;
+    line-height: 1;
 }
 
 .settings-link-icon::before,
@@ -251,7 +301,20 @@ noscript p {
     min-width: 0;
 }
 
+.help-link-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
 .settings-link-label {
+    color: var(--text-strong);
+    font-size: 0.96rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.help-link-label {
     color: var(--text-strong);
     font-size: 0.96rem;
     font-weight: 700;
@@ -264,6 +327,158 @@ noscript p {
     line-height: 1.2;
     text-transform: uppercase;
     letter-spacing: 0.16em;
+}
+
+.help-link-meta {
+    color: #f0c98d;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+}
+
+body[data-help-open="true"] {
+    overflow: hidden;
+}
+
+.help-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+}
+
+.help-backdrop {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at top, rgba(111, 198, 255, 0.16), transparent 36%),
+        rgba(3, 7, 13, 0.78);
+    backdrop-filter: blur(16px) saturate(140%);
+}
+
+.help-dialog {
+    position: relative;
+    z-index: 1;
+    width: min(1040px, calc(100% - 28px));
+    max-height: calc(100vh - 28px);
+    margin: 14px auto;
+    padding: 24px;
+    border-radius: 28px;
+    border: 1px solid rgba(184, 226, 255, 0.2);
+    background:
+        linear-gradient(160deg, rgba(9, 18, 30, 0.94), rgba(11, 22, 36, 0.9)),
+        radial-gradient(circle at top left, rgba(111, 198, 255, 0.12), transparent 34%),
+        radial-gradient(circle at bottom right, rgba(255, 191, 105, 0.1), transparent 28%);
+    box-shadow:
+        0 28px 90px rgba(0, 0, 0, 0.48),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    overflow: auto;
+}
+
+.help-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.help-eyebrow {
+    margin: 0 0 8px;
+    color: #f0c98d;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-size: 0.7rem;
+}
+
+.help-dialog-header h2 {
+    margin: 0;
+    color: var(--text-strong);
+    font-size: clamp(1.5rem, 3vw, 2.4rem);
+    line-height: 1.05;
+    max-width: 16ch;
+}
+
+.help-intro {
+    margin: 10px 0 0;
+    max-width: 64ch;
+    color: var(--text-muted);
+    font-size: 0.98rem;
+}
+
+.help-close-button {
+    min-width: 90px;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid rgba(184, 226, 255, 0.18);
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+        rgba(8, 17, 29, 0.7);
+    color: var(--text-strong);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 160ms ease, border-color 160ms ease;
+}
+
+.help-close-button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 191, 105, 0.34);
+}
+
+.help-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.help-card {
+    display: grid;
+    gap: 10px;
+    padding: 16px 18px;
+    border-radius: 20px;
+    border: 1px solid rgba(184, 226, 255, 0.14);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+        rgba(8, 18, 31, 0.7);
+    box-shadow:
+        0 18px 34px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.help-card h3 {
+    margin: 0;
+    color: var(--text-strong);
+    font-size: 1rem;
+}
+
+.help-list {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-main);
+    display: grid;
+    gap: 8px;
+    font-size: 0.9rem;
+}
+
+.help-list strong {
+    color: var(--text-strong);
+}
+
+.help-dialog-footer {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 191, 105, 0.16);
+    background:
+        linear-gradient(180deg, rgba(255, 191, 105, 0.08), rgba(255, 255, 255, 0.02)),
+        rgba(18, 16, 11, 0.74);
+}
+
+.help-tip {
+    color: #f6dfba;
+    font-size: 0.84rem;
 }
 
 .hero-panel {
@@ -1159,6 +1374,27 @@ noscript p {
     min-width: 68px;
 }
 
+.hero-map-select {
+    min-width: 120px;
+    height: 32px;
+    border: 1px solid rgba(184, 226, 255, 0.18);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(18, 34, 54, 0.74), rgba(7, 16, 28, 0.72));
+    color: #d8efff;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0 34px 0 10px;
+    cursor: pointer;
+    pointer-events: auto;
+    backdrop-filter: blur(14px) saturate(135%);
+}
+
+.hero-map-select:disabled {
+    cursor: default;
+    opacity: 0.65;
+}
+
 .hero-map-job-overlay {
     position: absolute;
     top: 12px;
@@ -1283,12 +1519,12 @@ noscript p {
     }
 
     .dashboard-shell {
-        padding-top: 36px;
+        padding-top: 20px;
     }
 
     .top-toolbar {
         gap: 8px;
-        margin-bottom: -95px;
+        margin-bottom: 12px;
     }
 
     .toolbar-toggle-button {
@@ -1296,6 +1532,7 @@ noscript p {
         padding-inline: 14px;
     }
 
+    .help-link,
     .settings-link {
         min-width: 190px;
         padding: 9px 12px 9px 10px;
@@ -1303,16 +1540,19 @@ noscript p {
         border-radius: 16px;
     }
 
+    .help-link-icon,
     .settings-link-icon {
         width: 36px;
         height: 36px;
         border-radius: 12px;
     }
 
+    .help-link-label,
     .settings-link-label {
         font-size: 0.86rem;
     }
 
+    .help-link-meta,
     .settings-link-meta {
         font-size: 0.62rem;
     }
@@ -1496,6 +1736,15 @@ noscript p {
         padding: 4px 9px;
         font-size: 0.72rem;
     }
+
+    .help-dialog {
+        padding: 20px;
+        border-radius: 24px;
+    }
+
+    .help-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 760px) {
@@ -1509,14 +1758,14 @@ noscript p {
     .dashboard-shell {
         width: min(100%, calc(100% - 18px));
         margin: 9px auto;
-        padding-top: 4px;
+        padding-top: 8px;
     }
 
     .top-toolbar {
         flex-direction: column-reverse;
         align-items: stretch;
         gap: 6px;
-        margin-bottom: -90px;
+        margin-bottom: 10px;
     }
 
     .toolbar-toggle-button {
@@ -1524,6 +1773,7 @@ noscript p {
         width: 100%;
     }
 
+    .help-link,
     .settings-link {
         min-width: 0;
         width: 100%;
@@ -1727,6 +1977,32 @@ noscript p {
         padding: 4px 8px;
         font-size: 0.68rem;
         white-space: normal;
+    }
+
+    .help-dialog {
+        width: min(100%, calc(100% - 12px));
+        max-height: calc(100vh - 12px);
+        margin: 6px auto;
+        padding: 16px;
+        border-radius: 22px;
+    }
+
+    .help-dialog-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .help-dialog-header h2 {
+        max-width: none;
+    }
+
+    .help-close-button {
+        width: 100%;
+    }
+
+    .help-card {
+        padding: 14px;
+        border-radius: 16px;
     }
 }
 

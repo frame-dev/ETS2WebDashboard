@@ -348,10 +348,10 @@ function telemetry_fetch_json_urls(array $urls): array
         }
 
         curl_multi_remove_handle($mh, $ch);
-        curl_close($ch);
+        $ch = null;
     }
 
-    curl_multi_close($mh);
+    $mh = null;
 
     return $results;
 }
@@ -1447,7 +1447,7 @@ function fetchPlayersData($meX, $meY, $radiusInput = 5500, $serverInput = 50)
     $response = curl_exec($ch);
     $errno = curl_errno($ch);
     $error = curl_error($ch);
-    curl_close($ch);
+    $ch = null;
 
     if ($response === false || $errno !== 0) {
         throw new Exception("Spieler-Feed nicht erreichbar: $error");
@@ -1535,7 +1535,7 @@ if (
     $response = curl_exec($ch);
     $errno = curl_errno($ch);
     $error = curl_error($ch);
-    curl_close($ch);
+    $ch = null;
 
     if ($response === false || $errno !== 0) {
         http_response_code(502);

@@ -76,6 +76,7 @@ $dashboard_config = [
     'mapDefaults' => is_array($frontend_config['mapDefaults'] ?? null) ? $frontend_config['mapDefaults'] : [],
     'mapBounds' => is_array($frontend_config['mapBounds'] ?? null) ? $frontend_config['mapBounds'] : [],
     'mapTiles' => is_array($frontend_config['mapTiles'] ?? null) ? $frontend_config['mapTiles'] : [],
+    'mapSources' => is_array($frontend_config['mapSources'] ?? null) ? $frontend_config['mapSources'] : [],
     'initialPayload' => $initial_payload,
 ];
 
@@ -124,6 +125,13 @@ $json_flags = JSON_UNESCAPED_SLASHES
             </div>
             <button class="toolbar-toggle-button" type="button" id="truckersmp-toggle" aria-pressed="true" aria-label="Toggle TruckersMP player markers">
                 TruckersMP
+            </button>
+            <button class="help-link" type="button" id="help-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="dashboard-help">
+                <span class="help-link-icon" aria-hidden="true">?</span>
+                <span class="help-link-copy">
+                    <span class="help-link-label">Help</span>
+                    <span class="help-link-meta">Controls & guide</span>
+                </span>
             </button>
             <a href="settings.php" class="settings-link" aria-label="Dashboard settings and configuration">
                 <span class="settings-link-icon" aria-hidden="true">O</span>
@@ -188,6 +196,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                 </div>
                 <div class="hero-map-toolbar">
                     <span class="hero-map-shortcuts" id="hero-map-shortcuts">Shortcuts: +/- zoom, C center</span>
+                    <select class="hero-map-select" id="hero-map-source" data-map-source-select aria-label="Select map source"></select>
                     <button class="hero-map-button hero-map-center-button" type="button" id="hero-map-center" aria-label="Center hero map on truck">Center</button>
                     <button class="hero-map-button" type="button" data-hero-map-zoom="out" aria-label="Zoom hero map out">-</button>
                     <button class="hero-map-button" type="button" data-hero-map-zoom="in" aria-label="Zoom hero map in">+</button>
@@ -215,6 +224,78 @@ $json_flags = JSON_UNESCAPED_SLASHES
                 </div>
             </div>
         </section>
+        <div class="help-overlay" id="help-overlay" hidden>
+            <div class="help-backdrop" data-help-close></div>
+            <section class="help-dialog" id="dashboard-help" role="dialog" aria-modal="true" aria-labelledby="help-title" aria-describedby="help-intro" tabindex="-1">
+                <div class="help-dialog-header">
+                    <div>
+                        <p class="help-eyebrow">Dashboard Help</p>
+                        <h2 id="help-title">Quick guide for the live ETS2 dashboard</h2>
+                        <p class="help-intro" id="help-intro">Everything important is here: what the main controls do, how the maps behave, where to go for deeper details, and what to check when something looks wrong.</p>
+                    </div>
+                    <button class="help-close-button" type="button" id="help-close" aria-label="Close help">Close</button>
+                </div>
+                <div class="help-grid">
+                    <article class="help-card">
+                        <h3>Start Here</h3>
+                        <ul class="help-list">
+                            <li><strong>Connection</strong> shows whether telemetry is reaching the dashboard right now.</li>
+                            <li><strong>Last Update</strong> tells you when the last telemetry payload arrived.</li>
+                            <li><strong>Refresh</strong> shows the polling interval used for live updates.</li>
+                            <li>The large center panel is your main driving view: speed, route, truck state, map, and notices.</li>
+                        </ul>
+                    </article>
+                    <article class="help-card">
+                        <h3>Main Controls</h3>
+                        <ul class="help-list">
+                            <li><strong>TruckersMP</strong> turns nearby player markers on or off.</li>
+                            <li><strong>Help</strong> opens this guide at any time.</li>
+                            <li><strong>Settings</strong> lets you change telemetry, map sources, design, and other saved dashboard options.</li>
+                            <li><strong>Info</strong> opens the detailed page with overview, systems, world, and debug tabs.</li>
+                        </ul>
+                    </article>
+                    <article class="help-card">
+                        <h3>Hero Map</h3>
+                        <ul class="help-list">
+                            <li>Use <strong>+</strong> and <strong>-</strong> to zoom the map.</li>
+                            <li>Press <strong>C</strong> or use <strong>Center</strong> to snap the map back to the truck.</li>
+                            <li>Drag the map to enter free pan mode. Centering restores follow-truck mode.</li>
+                            <li>The map selector lets you switch between <strong>Standard</strong> and <strong>ProMods</strong>. Bounds and tiles update automatically with the selected map.</li>
+                        </ul>
+                    </article>
+                    <article class="help-card">
+                        <h3>Driving Readouts</h3>
+                        <ul class="help-list">
+                            <li>The speed ring shows current speed, road speed limit, cruise control, peak, and trend.</li>
+                            <li>The route panel shows source, destination, planned distance, ETA, and estimated real time.</li>
+                            <li>The job overlay on the map summarizes income, cargo, and weight.</li>
+                            <li>When a delivery finishes, the popup summarizes route, income, XP, distance, and parking result.</li>
+                        </ul>
+                    </article>
+                    <article class="help-card">
+                        <h3>Info Page</h3>
+                        <ul class="help-list">
+                            <li><strong>Overview</strong> gives route, truck profile, and alerts.</li>
+                            <li><strong>Systems</strong> shows health, drivetrain, trailer, controls, and lighting.</li>
+                            <li><strong>World</strong> includes the larger interactive map and world/navigation details.</li>
+                            <li><strong>Debug</strong> shows the raw telemetry JSON for troubleshooting.</li>
+                        </ul>
+                    </article>
+                    <article class="help-card">
+                        <h3>If Something Breaks</h3>
+                        <ul class="help-list">
+                            <li>If telemetry fails, check that the game telemetry API is reachable and the configured endpoint is correct.</li>
+                            <li>If map tiles do not load, the dashboard falls back to the static preview and retries automatically.</li>
+                            <li>If the truck is missing from the map, wait for a fresh telemetry update and confirm the game is connected.</li>
+                            <li>If the wrong map is shown, switch the map source selector or adjust map sources in settings.</li>
+                        </ul>
+                    </article>
+                </div>
+                <div class="help-dialog-footer">
+                    <span class="help-tip">Shortcuts: <strong>?</strong> opens help, <strong>Esc</strong> closes it, <strong>+</strong>/<strong>-</strong> zoom the active map, <strong>C</strong> centers it.</span>
+                </div>
+            </section>
+        </div>
     </main>
     <script>
         window.dashboardConfig = <?php echo json_encode($dashboard_config, $json_flags); ?>;

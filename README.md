@@ -20,6 +20,7 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes t
 - Main dashboard with a large speed ring, direct km/h telemetry readouts, road-limit and tempomat pills, route distance, ETA, scaled real-time ETA, and fuel range
 - Dashboard status widgets for connection state, last update time, and active refresh interval
 - Dashboard notice cards for telemetry failures, cached fallback mode, and map or tile-source issues
+- Built-in `Help` overlay with quick usage guidance, controls, shortcuts, and troubleshooting notes
 - Draggable and zoomable hero map with center controls, corrected truck heading, follow defaults, and a live job overlay
 - Other-player overlays on both map views, including TruckersMP area players and direct remote telemetry players
 - Independent `TruckersMP` toolbar toggle so TruckersMP markers can be shown or hidden without disabling direct telemetry URL players
@@ -28,7 +29,7 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes t
 - Expanded information page in `infos.php` with `Overview`, `Systems`, `World`, and `Debug` tabs
 - Direct telemetry URL form in `infos.php` for loading other players from remote telemetry endpoints
 - System and vehicle detail views for truck profile, health, drivetrain, trailer state, controls, lighting, world position, events, and raw telemetry JSON
-- Interactive map system with saved browser preferences, configurable bounds, configurable tile sources, tile config discovery, overzoom support, and static fallback rendering
+- Interactive map system with saved browser preferences, remembered `Standard` or `ProMods` map selection, automatic per-source fallback bounds, tile config discovery, overzoom support, and static fallback rendering
 - Optional tile proxying through `tile-proxy.php` for approved map tile sources
 - Telemetry backend with upstream fetch control, timeout handling, JSON output for polling, local cache fallback, cache TTL control, remote-player aggregation, direct-URL persistence, and clearer fetch-error reporting
 - Integrated snapshot pipeline with timed capture, saved runtime state, duplicate snapshot avoidance, optional pretty-printed output, and configurable snapshot filename patterns
@@ -84,6 +85,7 @@ It focuses on fast, at-a-glance driving information:
 - speed and limit awareness
 - live route status
 - hero map with drag and zoom controls
+- built-in help overlay for controls, shortcuts, and troubleshooting
 - TruckersMP overlay toggle
 - delivery completion popup
 - connection and refresh status
@@ -165,6 +167,7 @@ Main configuration groups:
 - `frontend.mapDefaults`
 - `frontend.mapBounds`
 - `frontend.mapTiles`
+- `frontend.mapSources`
 
 ### Example `config.local.php`
 
@@ -254,6 +257,36 @@ return [
             'overzoomSteps' => 3,
             'retryDelayMs' => 8000,
         ],
+        'mapSources' => [
+            [
+                'id' => 'standard',
+                'name' => 'Standard',
+                'baseUrlCandidates' => ['http://10.147.17.64/tiles/', 'tiles', 'maps'],
+                'configNames' => ['TileMapInfo.json', 'config.json'],
+                'mapBounds' => [
+                    'minX' => -94621.8047,
+                    'maxX' => 79370.13,
+                    'minZ' => -80374.9453,
+                    'maxZ' => 93616.99,
+                ],
+                'overzoomSteps' => 3,
+                'retryDelayMs' => 8000,
+            ],
+            [
+                'id' => 'promods',
+                'name' => 'ProMods',
+                'baseUrlCandidates' => ['http://10.147.17.64/tilespromods/'],
+                'configNames' => ['TileMapInfo.json', 'config.json'],
+                'mapBounds' => [
+                    'minX' => -135110.156,
+                    'maxX' => 168923.75,
+                    'minZ' => -190095.016,
+                    'maxZ' => 113938.891,
+                ],
+                'overzoomSteps' => 3,
+                'retryDelayMs' => 8000,
+            ],
+        ],
     ],
 ];
 ```
@@ -316,7 +349,9 @@ The map overlays can display:
 - TruckersMP area players
 - direct remote telemetry players from saved URLs
 
-`tile-proxy.php` only allows requests to configured tile base URLs from `frontend.mapTiles.baseUrlCandidates`.
+The dashboard can expose named map sources such as `Standard` and `ProMods`, each with its own tile base URLs, config discovery order, retry timing, and fallback bounds. The selected map source is shared between the hero map and world map and remembered in browser storage.
+
+`tile-proxy.php` only allows requests to configured tile base URLs from `frontend.mapTiles.baseUrlCandidates` and `frontend.mapSources`.
 
 When tile config loading or tile proxy requests fail, the dashboard keeps the static preview visible and shows a user-facing warning notice.
 

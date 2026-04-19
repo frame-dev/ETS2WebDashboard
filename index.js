@@ -40,24 +40,123 @@ const defaultHeroMapZoom = Number.isFinite(configuredHeroMapZoom)
     ? Math.max(0, Math.floor(configuredHeroMapZoom))
     : 3;
 const defaultHeroMapFollowTruck = typeof mapDefaultsConfig.heroFollowTruck === "boolean" ? mapDefaultsConfig.heroFollowTruck : true;
-const ets2MapBounds = {
+const legacyMapBounds = {
     minX: Number(config.mapBounds?.minX) || -94118.3,
     maxX: Number(config.mapBounds?.maxX) || 128280,
     minZ: Number(config.mapBounds?.minZ) || -102857,
     maxZ: Number(config.mapBounds?.maxZ) || 57201.3,
 };
 const tileMapConfig = config.mapTiles || {};
-const tileMapRetryDelayMs = Math.max(1000, Number(tileMapConfig.retryDelayMs) || 8000);
 const defaultTileBaseUrlCandidates = [
     "http://10.147.17.64/tiles/",
     "tiles",
     "maps",
     "http://127.0.0.1:8081",
 ];
+const defaultTileConfigNames = ["config.json", "TileMapInfo.json"];
+
+function uniqueNonEmptyStrings(values) {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+
+    return Array.from(new Set(
+        values
+            .map((value) => String(value || "").trim())
+            .filter((value) => value !== ""),
+    ));
+}
+
+function normalizeMapBounds(rawBounds, fallbackBounds = legacyMapBounds) {
+    if (!rawBounds || typeof rawBounds !== "object") {
+        return { ...fallbackBounds };
+    }
+
+    const minX = getNumber(rawBounds.minX ?? rawBounds.x1);
+    const maxX = getNumber(rawBounds.maxX ?? rawBounds.x2);
+    const minZ = getNumber(rawBounds.minZ ?? rawBounds.y1);
+    const maxZ = getNumber(rawBounds.maxZ ?? rawBounds.y2);
+    if ([minX, maxX, minZ, maxZ].some((value) => value === null)) {
+        return { ...fallbackBounds };
+    }
+
+    if (minX >= maxX || minZ >= maxZ) {
+        return { ...fallbackBounds };
+    }
+
+    return { minX, maxX, minZ, maxZ };
+}
+
+function slugifyMapSourceId(value, fallback) {
+    const normalized = String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+
+    return normalized || fallback;
+}
+
+function normalizeMapSourceDefinition(source, index) {
+    if (!source || typeof source !== "object") {
+        return null;
+    }
+
+    const id = slugifyMapSourceId(source.id ?? source.name, `map-${index + 1}`);
+    const name = String(source.name || source.label || `Map ${index + 1}`).trim() || `Map ${index + 1}`;
+    const baseUrlCandidates = uniqueNonEmptyStrings(source.baseUrlCandidates);
+    if (baseUrlCandidates.length === 0) {
+        return null;
+    }
+
+    const configNames = uniqueNonEmptyStrings(source.configNames);
+    const fallbackBounds = normalizeMapBounds(source.mapBounds ?? source.bounds, legacyMapBounds);
+
+    return {
+        id,
+        name,
+        baseUrlCandidates,
+        configNames: configNames.length > 0 ? configNames : defaultTileConfigNames,
+        overzoomSteps: Math.max(0, Math.floor(getNumber(source.overzoomSteps) ?? getNumber(tileMapConfig.overzoomSteps) ?? 2)),
+        retryDelayMs: Math.max(1000, Math.floor(getNumber(source.retryDelayMs) ?? getNumber(tileMapConfig.retryDelayMs) ?? 8000)),
+        fallbackBounds,
+    };
+}
+
+function buildLegacyMapSource() {
+    const baseUrlCandidates = uniqueNonEmptyStrings(tileMapConfig.baseUrlCandidates);
+    const configNames = uniqueNonEmptyStrings(tileMapConfig.configNames);
+
+    return {
+        id: "standard",
+        name: "Standard",
+        baseUrlCandidates: baseUrlCandidates.length > 0 ? baseUrlCandidates : defaultTileBaseUrlCandidates,
+        configNames: configNames.length > 0 ? configNames : defaultTileConfigNames,
+        overzoomSteps: Math.max(0, Math.floor(getNumber(tileMapConfig.overzoomSteps) ?? 2)),
+        retryDelayMs: Math.max(1000, Math.floor(getNumber(tileMapConfig.retryDelayMs) ?? 8000)),
+        fallbackBounds: normalizeMapBounds(config.mapBounds, legacyMapBounds),
+    };
+}
+
+const availableMapSources = (() => {
+    const normalized = Array.isArray(config.mapSources)
+        ? config.mapSources
+            .map((source, index) => normalizeMapSourceDefinition(source, index))
+            .filter(Boolean)
+        : [];
+
+    return normalized.length > 0 ? normalized : [buildLegacyMapSource()];
+})();
+
+let selectedMapSourceId = availableMapSources[0]?.id || "standard";
 const tileMapState = {
     initialized: false,
+    initializing: false,
+    initializationToken: 0,
     config: null,
-    sourceLabel: "Static preview",
+    sourceId: selectedMapSourceId,
+    sourceName: availableMapSources[0]?.name || "Standard",
+    sourceLabel: `${availableMapSources[0]?.name || "Standard"} • Static preview`,
     baseUrl: "",
     configUrl: "",
     tileTemplate: "",
@@ -104,6 +203,10 @@ const elements = {
     heroSummary: document.getElementById("hero-summary"),
     dashboardNotices: document.getElementById("dashboard-notices"),
     truckersMpToggle: document.getElementById("truckersmp-toggle"),
+    helpToggle: document.getElementById("help-toggle"),
+    helpOverlay: document.getElementById("help-overlay"),
+    helpDialog: document.getElementById("dashboard-help"),
+    helpClose: document.getElementById("help-close"),
     konvoyServerForm: document.getElementById("konvoy-server-form"),
     konvoyServerUrls: document.getElementById("konvoy-server-urls"),
     remoteTelemetryToggle: document.getElementById("remote-telemetry-toggle"),
@@ -146,6 +249,7 @@ const elements = {
     heroMapJobIncome: document.getElementById("hero-map-job-income"),
     heroMapJobCargo: document.getElementById("hero-map-job-cargo"),
     heroMapJobWeight: document.getElementById("hero-map-job-weight"),
+    heroMapSource: document.getElementById("hero-map-source"),
     jobFinishedPopup: document.getElementById("job-finished-popup"),
     jobFinishedPopupBadge: document.getElementById("job-finished-popup-badge"),
     jobFinishedPopupTitle: document.getElementById("job-finished-popup-title"),
@@ -165,6 +269,7 @@ const elements = {
     ets2MapMode: document.getElementById("ets2-map-mode"),
     ets2MapCenter: document.getElementById("ets2-map-center"),
     ets2MapShortcuts: document.getElementById("ets2-map-shortcuts"),
+    ets2MapSource: document.getElementById("ets2-map-source"),
     mapJobIncome: document.getElementById("map-job-income"),
     mapJobCargo: document.getElementById("map-job-cargo"),
     mapJobWeight: document.getElementById("map-job-weight"),
@@ -192,12 +297,15 @@ const tabButtons = Array.from(document.querySelectorAll("[data-tab]"));
 const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
 const mapZoomButtons = Array.from(document.querySelectorAll("[data-map-zoom]"));
 const heroMapZoomButtons = Array.from(document.querySelectorAll("[data-hero-map-zoom]"));
+const mapSourceSelects = Array.from(document.querySelectorAll("[data-map-source-select]"));
 const systemLocale = typeof navigator !== "undefined"
     ? (navigator.languages?.[0] || navigator.language || "en-US")
     : "en-US";
 const cityLocalizationState = {
     loaded: false,
     loading: false,
+    sourceId: "",
+    requestToken: 0,
     cityByKey: new Map(),
     localeCandidates: buildLocaleCandidates(systemLocale),
 };
@@ -238,11 +346,133 @@ let previousJobDeliveredState = false;
 let jobFinishedPopupVisibleUntil = 0;
 let previousJobFinishedSignature = "";
 let jobFinishedPopupHydrated = false;
+let lastHelpTrigger = null;
 const jobFinishedPopupDurationMs = 5000;
 const dashboardIssues = {
     telemetry: null,
     map: null,
 };
+
+function isHelpOpen() {
+    return Boolean(elements.helpOverlay && !elements.helpOverlay.hidden);
+}
+
+function openHelpDialog(trigger = null) {
+    if (!elements.helpOverlay || !elements.helpDialog) {
+        return;
+    }
+
+    lastHelpTrigger = trigger instanceof HTMLElement ? trigger : document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    elements.helpOverlay.hidden = false;
+    document.body.dataset.helpOpen = "true";
+    if (elements.helpToggle instanceof HTMLButtonElement) {
+        elements.helpToggle.setAttribute("aria-expanded", "true");
+    }
+    window.requestAnimationFrame(() => {
+        elements.helpDialog?.focus();
+    });
+}
+
+function closeHelpDialog({ restoreFocus = true } = {}) {
+    if (!elements.helpOverlay || !elements.helpDialog) {
+        return;
+    }
+
+    elements.helpOverlay.hidden = true;
+    delete document.body.dataset.helpOpen;
+    if (elements.helpToggle instanceof HTMLButtonElement) {
+        elements.helpToggle.setAttribute("aria-expanded", "false");
+    }
+
+    if (restoreFocus && lastHelpTrigger instanceof HTMLElement) {
+        lastHelpTrigger.focus();
+    }
+}
+
+function getMapSourceById(sourceId) {
+    return availableMapSources.find((source) => source.id === sourceId) || null;
+}
+
+function getSelectedMapSource() {
+    return getMapSourceById(selectedMapSourceId) || availableMapSources[0] || null;
+}
+
+function syncMapSourceControls() {
+    mapSourceSelects.forEach((select) => {
+        const existingMarkup = Array.from(select.options).map((option) => `${option.value}:${option.textContent}`).join("|");
+        const expectedMarkup = availableMapSources.map((source) => `${source.id}:${source.name}`).join("|");
+        if (existingMarkup !== expectedMarkup) {
+            select.innerHTML = availableMapSources
+                .map((source) => `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`)
+                .join("");
+        }
+
+        select.value = selectedMapSourceId;
+        select.disabled = availableMapSources.length <= 1;
+    });
+}
+
+function resetCityLocalizations() {
+    cityLocalizationState.loaded = false;
+    cityLocalizationState.loading = false;
+    cityLocalizationState.sourceId = "";
+    cityLocalizationState.requestToken += 1;
+    cityLocalizationState.cityByKey = new Map();
+}
+
+function clearTileMapRetryTimer() {
+    if (tileMapRetryTimer !== null) {
+        window.clearTimeout(tileMapRetryTimer);
+        tileMapRetryTimer = null;
+    }
+}
+
+function resetTileMapRuntime(source) {
+    const activeSource = source || getSelectedMapSource();
+    tileMapState.initialized = false;
+    tileMapState.initializing = false;
+    tileMapState.config = null;
+    tileMapState.sourceId = activeSource?.id || selectedMapSourceId;
+    tileMapState.sourceName = activeSource?.name || "Map";
+    tileMapState.sourceLabel = `${tileMapState.sourceName} • Static preview`;
+    tileMapState.baseUrl = "";
+    tileMapState.configUrl = "";
+    tileMapState.tileTemplate = "";
+    tileMapState.minZoom = 0;
+    tileMapState.maxZoom = 8;
+    tileMapState.nativeMaxZoom = 8;
+    tileMapState.availableTileMaxZoom = 8;
+    tileMapState.overzoomSteps = activeSource?.overzoomSteps ?? Math.max(0, Math.floor(getNumber(tileMapConfig.overzoomSteps) ?? 2));
+    tileMapState.currentTruckPixel = null;
+    tileMapState.lastView = null;
+    tileMapState.manualCenter = null;
+    tileMapState.drag.active = false;
+    heroMapState.lastView = null;
+    heroMapState.manualCenter = null;
+    heroMapState.drag.active = false;
+}
+
+function setSelectedMapSource(sourceId, persistPreference = true) {
+    const source = getMapSourceById(sourceId);
+    if (!source) {
+        return;
+    }
+
+    selectedMapSourceId = source.id;
+    clearTileMapRetryTimer();
+    tileMapState.initializationToken += 1;
+    resetTileMapRuntime(source);
+    resetCityLocalizations();
+    syncMapSourceControls();
+    clearDashboardIssue("map");
+    updateMapModeLabel();
+    if (persistPreference) {
+        persistMapPreferences();
+    }
+    rerenderMapsFromLatestData(true);
+    loadCityLocalizations();
+    initializeTileMap(true);
+}
 
 function formatRetryDelayLabel(delayMs) {
     const normalized = Math.max(0, Number(delayMs) || 0);
@@ -388,18 +618,26 @@ function formatLocalizedRouteLocation(cityName, companyName, fallback) {
 }
 
 function loadCityLocalizations() {
-    if (cityLocalizationState.loaded || cityLocalizationState.loading) {
+    const selectedSource = getSelectedMapSource();
+    if (!selectedSource) {
         return;
     }
 
-    const baseUrlCandidates = Array.isArray(tileMapConfig.baseUrlCandidates) && tileMapConfig.baseUrlCandidates.length > 0
-        ? tileMapConfig.baseUrlCandidates
-        : defaultTileBaseUrlCandidates;
+    if (cityLocalizationState.loaded && cityLocalizationState.sourceId === selectedSource.id) {
+        return;
+    }
+
+    if (cityLocalizationState.loading) {
+        return;
+    }
+
     const prioritizedBaseUrls = Array.from(new Set([
         tileMapState.baseUrl,
-        ...baseUrlCandidates,
+        ...selectedSource.baseUrlCandidates,
     ].filter((baseUrl) => typeof baseUrl === "string" && baseUrl.trim() !== "")));
 
+    const requestToken = cityLocalizationState.requestToken + 1;
+    cityLocalizationState.requestToken = requestToken;
     cityLocalizationState.loading = true;
     (async () => {
         for (const baseUrl of prioritizedBaseUrls) {
@@ -438,8 +676,13 @@ function loadCityLocalizations() {
                     });
                 });
 
+                if (cityLocalizationState.requestToken !== requestToken) {
+                    return;
+                }
+
                 cityLocalizationState.cityByKey = lookup;
                 cityLocalizationState.loaded = true;
+                cityLocalizationState.sourceId = selectedSource.id;
 
                 rerenderMapsFromLatestData(true);
                 return;
@@ -452,7 +695,9 @@ function loadCityLocalizations() {
             // Ignore localization fetch failures and keep telemetry rendering with source names.
         })
         .finally(() => {
-            cityLocalizationState.loading = false;
+            if (cityLocalizationState.requestToken === requestToken) {
+                cityLocalizationState.loading = false;
+            }
         });
 }
 
@@ -701,6 +946,27 @@ function handleGlobalMapShortcuts(event) {
     const lowerKey = key.toLowerCase();
     const isZoomIn = key === "+" || key === "=" || event.code === "NumpadAdd";
     const isZoomOut = key === "-" || key === "_" || event.code === "NumpadSubtract";
+    const isHelpShortcut = key === "?" || (key === "/" && event.shiftKey);
+
+    if (isHelpShortcut) {
+        event.preventDefault();
+        if (isHelpOpen()) {
+            closeHelpDialog();
+        } else {
+            openHelpDialog();
+        }
+        return;
+    }
+
+    if (key === "Escape" && isHelpOpen()) {
+        event.preventDefault();
+        closeHelpDialog();
+        return;
+    }
+
+    if (isHelpOpen()) {
+        return;
+    }
 
     if (isZoomIn) {
         event.preventDefault();
@@ -735,6 +1001,7 @@ function handleGlobalMapShortcuts(event) {
 function persistMapPreferences() {
     try {
         window.localStorage.setItem(mapPreferencesStorageKey, JSON.stringify({
+            mapSourceId: selectedMapSourceId,
             worldZoom: tileMapState.zoom,
             worldFollowTruck: tileMapState.followTruck,
             heroZoom: heroMapState.zoom,
@@ -758,6 +1025,15 @@ function loadMapPreferences() {
         hasLoadedMapPreferences = true;
         const worldZoom = getNumber(parsed?.worldZoom);
         const heroZoom = getNumber(parsed?.heroZoom);
+        const storedMapSourceId = typeof parsed?.mapSourceId === "string" ? parsed.mapSourceId.trim() : "";
+
+        if (storedMapSourceId !== "" && getMapSourceById(storedMapSourceId)) {
+            selectedMapSourceId = storedMapSourceId;
+            const source = getSelectedMapSource();
+            tileMapState.sourceId = source?.id || selectedMapSourceId;
+            tileMapState.sourceName = source?.name || tileMapState.sourceName;
+            tileMapState.sourceLabel = `${tileMapState.sourceName} • Static preview`;
+        }
 
         if (worldZoom !== null) {
             tileMapState.zoom = Math.floor(worldZoom);
@@ -1251,30 +1527,34 @@ function normalizeDegrees(value) {
     return ((parsed % 360) + 360) % 360;
 }
 
+function getCurrentFallbackBounds() {
+    if (tileMapState.initialized && tileMapState.config?.bounds) {
+        return normalizeMapBounds(tileMapState.config.bounds, legacyMapBounds);
+    }
+
+    return getSelectedMapSource()?.fallbackBounds || legacyMapBounds;
+}
+
 function getMapProjectionPoint(x, z) {
     if (tileMapState.initialized && tileMapState.config) {
         return gameCoordsToTilePixels(x, z, tileMapState.config);
     }
 
-    const width = ets2MapBounds.maxX - ets2MapBounds.minX;
-    const height = ets2MapBounds.maxZ - ets2MapBounds.minZ;
+    const fallbackBounds = getCurrentFallbackBounds();
+    const width = fallbackBounds.maxX - fallbackBounds.minX;
+    const height = fallbackBounds.maxZ - fallbackBounds.minZ;
     if (width <= 0 || height <= 0) {
         return null;
     }
 
     return {
-        pixelX: clamp01((x - ets2MapBounds.minX) / width),
-        pixelY: clamp01((ets2MapBounds.maxZ - z) / height),
+        pixelX: clamp01((x - fallbackBounds.minX) / width),
+        pixelY: clamp01((fallbackBounds.maxZ - z) / height),
     };
 }
 
 function buildFallbackProjectionBounds(centerX, centerZ, points = []) {
-    const configuredBounds = {
-        minX: ets2MapBounds.minX,
-        maxX: ets2MapBounds.maxX,
-        minZ: ets2MapBounds.minZ,
-        maxZ: ets2MapBounds.maxZ,
-    };
+    const configuredBounds = getCurrentFallbackBounds();
     const validPoints = [];
 
     if (getNumber(centerX) !== null && getNumber(centerZ) !== null) {
@@ -1791,7 +2071,7 @@ async function tryFetchJson(url) {
     }
 }
 
-function normalizeTileMapDefinition(rawConfig, baseUrl, configName) {
+function normalizeTileMapDefinition(rawConfig, baseUrl, configName, sourceName) {
     const map = rawConfig?.map || rawConfig;
     const transposition = rawConfig?.transposition;
     const minZoom = getNumber(rawConfig.minZoom) ?? getNumber(map.minZoom) ?? 0;
@@ -1819,7 +2099,7 @@ function normalizeTileMapDefinition(rawConfig, baseUrl, configName) {
             maxZoom,
             tileTemplate,
             baseUrl,
-            sourceLabel: `Tiles • ${baseUrl}`,
+            sourceLabel: sourceName || "Map",
         };
     }
 
@@ -1857,44 +2137,59 @@ function normalizeTileMapDefinition(rawConfig, baseUrl, configName) {
         maxZoom,
         tileTemplate,
         baseUrl,
-        sourceLabel: `Tiles • ${baseUrl}`,
+        sourceLabel: sourceName || "Map",
     };
 }
 
-async function initializeTileMap() {
-    if (tileMapState.initialized) {
+async function initializeTileMap(force = false) {
+    const selectedSource = getSelectedMapSource();
+    if (!selectedSource) {
         return;
     }
 
-    const baseUrlCandidates = Array.isArray(tileMapConfig.baseUrlCandidates) && tileMapConfig.baseUrlCandidates.length > 0
-        ? tileMapConfig.baseUrlCandidates
-        : defaultTileBaseUrlCandidates;
-    const configNames = Array.isArray(tileMapConfig.configNames) && tileMapConfig.configNames.length > 0
-        ? tileMapConfig.configNames
-        : ["config.json", "TileMapInfo.json"];
+    if (!force && (tileMapState.initialized || tileMapState.initializing) && tileMapState.sourceId === selectedSource.id) {
+        return;
+    }
+
+    clearTileMapRetryTimer();
+    const initializationToken = tileMapState.initializationToken + 1;
+    tileMapState.initializationToken = initializationToken;
+    resetTileMapRuntime(selectedSource);
+    tileMapState.initializing = true;
     let lastInitializationError = "";
 
-    for (const baseUrl of baseUrlCandidates) {
-        for (const configName of configNames) {
+    for (const baseUrl of selectedSource.baseUrlCandidates) {
+        for (const configName of selectedSource.configNames) {
             const configUrl = buildTileRequestUrl(baseUrl, configName);
 
             try {
                 const rawConfig = await tryFetchJson(configUrl);
-                const normalized = normalizeTileMapDefinition(rawConfig, baseUrl, configName);
+                const normalized = normalizeTileMapDefinition(rawConfig, baseUrl, configName, selectedSource.name);
 
                 if (!normalized) {
                     continue;
                 }
 
+                if (tileMapState.initializationToken !== initializationToken) {
+                    return;
+                }
+
                 tileMapState.initialized = true;
+                tileMapState.initializing = false;
                 tileMapState.config = normalized;
+                tileMapState.sourceId = selectedSource.id;
+                tileMapState.sourceName = selectedSource.name;
                 tileMapState.baseUrl = baseUrl;
                 tileMapState.configUrl = configUrl;
                 tileMapState.tileTemplate = normalized.tileTemplate;
                 tileMapState.minZoom = normalized.minZoom;
                 tileMapState.nativeMaxZoom = normalized.maxZoom;
                 tileMapState.availableTileMaxZoom = await detectAvailableMaxZoom(normalized);
-                tileMapState.overzoomSteps = Math.max(0, Math.floor(getNumber(tileMapConfig.overzoomSteps) ?? 2));
+                if (tileMapState.initializationToken !== initializationToken) {
+                    return;
+                }
+
+                tileMapState.overzoomSteps = selectedSource.overzoomSteps;
                 tileMapState.maxZoom = tileMapState.availableTileMaxZoom + tileMapState.overzoomSteps;
                 const worldDefaultZoom = defaultWorldMapZoom;
                 tileMapState.zoom = Math.max(normalized.minZoom, Math.min(tileMapState.maxZoom, hasLoadedMapPreferences ? tileMapState.zoom : worldDefaultZoom));
@@ -1906,7 +2201,7 @@ async function initializeTileMap() {
                 heroMapState.defaultZoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, defaultHeroMapZoom));
                 heroMapState.zoom = Math.max(heroMapState.minZoom, Math.min(heroMapState.maxZoom, hasLoadedMapPreferences ? heroMapState.zoom : heroMapState.defaultZoom));
                 setHeroMapFollowTruck(heroMapState.followTruck);
-                tileMapState.sourceLabel = normalized.sourceLabel;
+                tileMapState.sourceLabel = `${selectedSource.name} • Tiles live`;
 
                 updateMapModeLabel();
                 persistMapPreferences();
@@ -1921,22 +2216,27 @@ async function initializeTileMap() {
         }
     }
 
+    if (tileMapState.initializationToken !== initializationToken) {
+        return;
+    }
+
+    tileMapState.initializing = false;
     updateMapModeLabel();
     setDashboardIssue("map", {
         severity: "warning",
         title: "Map tiles unavailable",
-        message: `${lastInitializationError || "The dashboard could not load any configured tile source."} Retrying in ${formatRetryDelayLabel(tileMapRetryDelayMs)} while the static preview stays available.`,
+        message: `${lastInitializationError || `The dashboard could not load the ${selectedSource.name} map source.`} Retrying in ${formatRetryDelayLabel(selectedSource.retryDelayMs)} while the static preview stays available.`,
     });
     tileMapRetryTimer = window.setTimeout(() => {
         tileMapRetryTimer = null;
-        initializeTileMap();
-    }, tileMapRetryDelayMs);
+        initializeTileMap(true);
+    }, selectedSource.retryDelayMs);
 }
 
 function updateMapModeLabel() {
     if (elements.ets2MapMode) {
         if (!tileMapState.initialized) {
-            elements.ets2MapMode.textContent = "Static preview";
+            elements.ets2MapMode.textContent = `${tileMapState.sourceName} • Static preview`;
         } else {
             elements.ets2MapMode.textContent = `${tileMapState.sourceLabel} • ${tileMapState.followTruck ? "Follow truck" : "Free pan"}`;
         }
@@ -1944,6 +2244,10 @@ function updateMapModeLabel() {
 
     if (elements.ets2MapCenter) {
         elements.ets2MapCenter.disabled = !tileMapState.initialized || tileMapState.followTruck;
+    }
+
+    if (elements.heroMapCenter) {
+        elements.heroMapCenter.disabled = !tileMapState.initialized || heroMapState.followTruck;
     }
 }
 
@@ -3130,7 +3434,9 @@ function renderMap(data) {
     }
 
     if (elements.mapBadge) {
-        elements.mapBadge.textContent = hasPosition ? (tileMapState.initialized ? "Tiles live" : "Tracking") : "Waiting";
+        elements.mapBadge.textContent = hasPosition
+            ? (tileMapState.initialized ? `${tileMapState.sourceName} live` : tileMapState.sourceName)
+            : "Waiting";
         elements.mapBadge.dataset.state = hasPosition ? "active" : "idle";
     }
 
@@ -3233,7 +3539,7 @@ function renderMap(data) {
             createMetaPill("X", formatCoordinate(x)),
             createMetaPill("Z", formatCoordinate(z)),
             createMetaPill("Heading", formatAngleDegrees(heading)),
-            createMetaPill("Map", tileMapState.initialized ? `z${tileMapState.zoom}` : "Preview"),
+            createMetaPill("Map", tileMapState.initialized ? `${tileMapState.sourceName} z${tileMapState.zoom}` : `${tileMapState.sourceName} preview`),
         ].join("");
     }
 
@@ -3513,6 +3819,40 @@ if (elements.heroMapCenter) {
     });
 }
 
+if (elements.helpToggle) {
+    bindMapControlPress(elements.helpToggle, () => {
+        if (isHelpOpen()) {
+            closeHelpDialog();
+        } else {
+            openHelpDialog(elements.helpToggle);
+        }
+    });
+}
+
+if (elements.helpClose) {
+    bindMapControlPress(elements.helpClose, () => {
+        closeHelpDialog();
+    });
+}
+
+if (elements.helpOverlay) {
+    elements.helpOverlay.addEventListener("click", (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest("[data-help-close]")) {
+            closeHelpDialog();
+        }
+    });
+}
+
+mapSourceSelects.forEach((select) => {
+    select.addEventListener("change", (event) => {
+        const nextSourceId = event.target instanceof HTMLSelectElement ? event.target.value : "";
+        if (nextSourceId !== "") {
+            setSelectedMapSource(nextSourceId);
+        }
+    });
+});
+
 if (elements.truckersMpToggle) {
     bindMapControlPress(elements.truckersMpToggle, () => {
         setPlayersOverlayEnabled(!playersOverlayEnabled);
@@ -3598,6 +3938,8 @@ try {
 }
 
 loadMapPreferences();
+syncMapSourceControls();
+resetTileMapRuntime(getSelectedMapSource());
 updateTruckersMpToggle();
 updateRemoteTelemetryToggle();
 syncRemoteTelemetryInput();

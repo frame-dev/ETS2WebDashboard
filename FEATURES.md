@@ -14,6 +14,7 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 - Peak-speed, trend, and overspeed status chips
 - Connection status, last update time, and active refresh interval indicators
 - Inline dashboard notice cards for telemetry failures, cached fallback mode, and map or tile issues
+- In-app `Help` overlay with dashboard guidance, shortcuts, and troubleshooting notes
 - Route summary with source and destination, distance, ETA, real-time ETA, and fuel range
 - Delivery-complete popup with income, XP, distance, and parking result
 - Main-toolbar `TruckersMP` toggle for area-player visibility
@@ -46,6 +47,9 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 - Static preview fallback when live tiles are unavailable
 - Configurable world bounds for truck positioning
 - Tile-source discovery from configurable base URLs and config names
+- Named map selection shared between the hero map and world map, including `Standard` and `ProMods`
+- Automatic fallback-bound switching based on the selected map (`Standard` or `ProMods`)
+- Saved browser preference for the selected map source, including `Standard` and `ProMods`
 - Configurable tile retry delay when live tile metadata is unavailable
 - Optional tile proxy support through `tile-proxy.php`
 - Tile proxy errors returned in a frontend-readable format for better user feedback
@@ -72,6 +76,7 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 - Visual settings for shared UI typography, hero-map player labels, and surface styling
 - Frontend player settings for refresh interval, search radius, and default server
 - Snapshot naming controls for prefix, timestamp format, and filename pattern
+- Support for named frontend map sources such as `Standard` and `ProMods` in addition to legacy single-source tile configuration
 - Local override support layered on top of defaults from `config.php`
 - Environment-variable overrides for runtime-sensitive telemetry and snapshot settings
 

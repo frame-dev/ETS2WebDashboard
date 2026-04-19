@@ -575,6 +575,21 @@ button:focus-visible,
     margin-left: auto;
 }
 
+.ets2-map-source-select {
+    min-width: 128px;
+    min-height: 40px;
+    padding: 0 36px 0 12px;
+    border: 1px solid rgba(184, 226, 255, 0.16);
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+        rgba(8, 17, 29, 0.62);
+    color: var(--text-strong);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
 .ets2-map-zoom-button {
     appearance: none;
     min-width: 40px;

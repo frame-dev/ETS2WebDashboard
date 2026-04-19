@@ -54,6 +54,7 @@ $dashboard_config = [
     'mapDefaults' => is_array($frontend_config['mapDefaults'] ?? null) ? $frontend_config['mapDefaults'] : [],
     'mapBounds' => is_array($frontend_config['mapBounds'] ?? null) ? $frontend_config['mapBounds'] : [],
     'mapTiles' => is_array($frontend_config['mapTiles'] ?? null) ? $frontend_config['mapTiles'] : [],
+    'mapSources' => is_array($frontend_config['mapSources'] ?? null) ? $frontend_config['mapSources'] : [],
     'initialPayload' => $initial_payload,
 ];
 
@@ -220,6 +221,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
                             <span class="ets2-map-mode" id="ets2-map-mode">Static preview</span>
                             <span class="ets2-map-shortcuts" id="ets2-map-shortcuts">Shortcuts: +/- zoom, C center</span>
                             <div class="ets2-map-zoom-controls">
+                                <select class="ets2-map-source-select" id="ets2-map-source" data-map-source-select aria-label="Select map source"></select>
                                 <button class="ets2-map-zoom-button ets2-map-center-button" type="button" id="ets2-map-center" aria-label="Center on truck">Center</button>
                                 <button class="ets2-map-zoom-button" type="button" data-map-zoom="out" aria-label="Zoom out">-</button>
                                 <button class="ets2-map-zoom-button" type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
