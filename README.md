@@ -2,20 +2,24 @@
 
 A browser-based ETS2 telemetry dashboard built with PHP, JavaScript, and CSS.
 
-The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes the site root to that page, so opening `http://localhost:8000/` loads the newer dashboard by default.
+The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes the site root to that page, so opening `http://localhost:8000/` loads the newer dashboard by default. Clean local aliases are also available at `/ets2` and `/ats`.
 
 ## Roadmap
 
-- [ ] Support for American Truck Simulator
+- [x] Add an American Truck Simulator landing page and backend telemetry endpoint
+- [ ] Turn the American Truck Simulator page into a full live dashboard
 
 ## What This Project Includes
 
 - `indexV2.php`: the main live dashboard
+- `indexV2Ats.php`: an American Truck Simulator project page, available at `/ats`
 - `infos.php`: a secondary information workspace with deeper telemetry sections and direct remote-player URL controls
 - `settings.php`: a browser-based configuration editor for `config.local.php`
 - `telemetry.php`: the PHP telemetry fetch, cache, snapshot, and remote-player pipeline
+- `telemetryAts.php`: the American Truck Simulator telemetry fetch, cache, and snapshot endpoint
 - `tile-proxy.php`: a controlled proxy for external tile servers used by the map views
 - `index.php`: a legacy dashboard page kept alongside the newer V2 panel
+- `tools/smoke.php`: a small no-dependency smoke check for PHP linting and config/router sanity checks
 
 ## Features
 
@@ -43,6 +47,7 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes t
 - Integrated snapshot pipeline with timed capture, saved runtime state, duplicate snapshot avoidance, optional pretty-printed output, and configurable snapshot filename patterns
 - Browser-based settings workspace with tabs for `General`, `Telemetry`, `Frontend`, `Maps`, `Snapshots`, and `Transfer`
 - Settings controls for app copy, theme colors, typography, hero-map player label size, panel styling, telemetry behavior, player polling defaults, route planner tuning, speed ring tuning, polling behavior, storage keys, map defaults, map bounds, snapshot naming, and tile sources
+- Settings controls preserve ETS2 and ATS telemetry endpoints, cache files, snapshot directories, state files, and filename prefixes
 - Config transfer features including JSON import, JSON export, PHP export, generated managed config preview, and clearer inline import-error feedback
 - Managed settings writes back to `config.local.php` while preserving unrelated local config values
 - Config system with defaults in `config.php`, local overrides in `config.local.php`, environment-variable overrides, and theme sanitization
@@ -78,9 +83,22 @@ Or use the included launcher scripts:
 - create `.runtime/`, `tmp/`, and `snapshots/`
 - create `config.local.php` from `config.local.example.php` if it does not exist
 
-5. Open `http://localhost:8000/` or `http://localhost:8000/indexV2.php` for the main dashboard.
+5. Open `http://localhost:8000/`, `http://localhost:8000/ets2`, or `http://localhost:8000/indexV2.php` for the main dashboard.
 6. Open `http://localhost:8000/infos.php` for the extended telemetry workspace.
 7. Open `http://localhost:8000/settings.php` to manage configuration from the browser.
+8. Open `http://localhost:8000/ats` for the American Truck Simulator project page.
+
+## Quality Checks
+
+Run the smoke checks before larger edits or before sharing changes:
+
+```bash
+php tools/smoke.php
+```
+
+The script lints the PHP entry points and verifies key configuration, theme, and router assumptions.
+
+The built-in router also blocks local-only paths such as `.git`, `.runtime`, `tmp`, `snapshots`, and `config.local.php`, and returns `404` for missing asset-like paths instead of serving dashboard HTML.
 
 ## Pages
 

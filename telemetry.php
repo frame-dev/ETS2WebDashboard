@@ -426,11 +426,12 @@ function telemetry_build_remote_player(array $data, string $sourceUrl): ?array
     $make = trim((string) get_telemetry_value($data, 'truck.make', ''));
     $model = trim((string) get_telemetry_value($data, 'truck.model', ''));
     $speed = get_telemetry_value($data, 'truck.speed');
-    $name = $licensePlate . " " . (is_numeric($speed) ? sprintf('%.1f km/h', $speed) : 'N/A');
-
-    if ($name === '') {
-        $name = trim($make . ' ' . $model) . ($speed !== null && is_numeric($speed) ? sprintf(' (%.1f km/h)', $speed) : '');
+    $speedLabel = is_numeric($speed) ? sprintf('%.1f km/h', $speed) : '';
+    $vehicleLabel = trim($licensePlate !== '' ? $licensePlate : trim($make . ' ' . $model));
+    if ($vehicleLabel === '' && $host !== '') {
+        $vehicleLabel = $host;
     }
+    $name = trim($vehicleLabel . ($speedLabel !== '' ? ' ' . $speedLabel : ''));
 
     if ($name === '') {
         $name = $host !== '' ? $host : 'Remote telemetry';
@@ -1420,7 +1421,14 @@ function get_refuel_amount($json_data)
 }
 
 $telemetry_source = null;
-$json_data = fetch_telemetry_data(TELEMETRY_URL, $telemetry_source);
+$json_data = [];
+$telemetry_direct_format = basename(__FILE__) === basename($_SERVER["SCRIPT_FILENAME"] ?? "")
+    ? (string) ($_GET["format"] ?? "")
+    : null;
+
+if ($telemetry_direct_format === null || $telemetry_direct_format === "" || $telemetry_direct_format === "json") {
+    $json_data = fetch_telemetry_data(TELEMETRY_URL, $telemetry_source);
+}
 
 function fetchPlayersData($meX, $meY, $radiusInput = 5500, $serverInput = 50)
 {
@@ -1645,4 +1653,21 @@ if (
         ], JSON_UNESCAPED_SLASHES);
         exit;
     }
+}
+
+if (
+    basename(__FILE__) === basename($_SERVER["SCRIPT_FILENAME"] ?? "") &&
+    $telemetry_direct_format !== null &&
+    $telemetry_direct_format !== ''
+) {
+    http_response_code(400);
+    header("Content-Type: application/json; charset=utf-8");
+    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    header("Pragma: no-cache");
+    echo json_encode([
+        'Success' => false,
+        'error' => 'Unsupported telemetry format.',
+        'supportedFormats' => ['json', 'players', 'remotePlayers', 'saveRemoteTelemetryUrls'],
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
 }

@@ -254,19 +254,24 @@ function settings_import_json_to_form_data(array $currentFormData, array $import
     $currentFormData['design']['glassBlurPx'] = dashboard_clamp_int($importedConfig['design']['glassBlurPx'] ?? $currentFormData['design']['glassBlurPx'], $currentFormData['design']['glassBlurPx'], 0, 40);
 
     $currentFormData['telemetry']['upstreamUrl'] = trim((string) ($importedConfig['telemetry']['upstreamUrl'] ?? $currentFormData['telemetry']['upstreamUrl']));
+    $currentFormData['telemetry']['atsUpstreamUrl'] = trim((string) ($importedConfig['telemetry']['atsUpstreamUrl'] ?? $currentFormData['telemetry']['atsUpstreamUrl']));
     $currentFormData['telemetry']['refreshIntervalMs'] = max(100, settings_int_value($importedConfig['telemetry']['refreshIntervalMs'] ?? null, $currentFormData['telemetry']['refreshIntervalMs']));
     $currentFormData['telemetry']['requestTimeoutMs'] = max(500, settings_int_value($importedConfig['telemetry']['requestTimeoutMs'] ?? null, $currentFormData['telemetry']['requestTimeoutMs']));
     $currentFormData['telemetry']['jsonPrettyPrint'] = (bool) ($importedConfig['telemetry']['jsonPrettyPrint'] ?? $currentFormData['telemetry']['jsonPrettyPrint']);
     $currentFormData['telemetry']['cacheEnabled'] = (bool) ($importedConfig['telemetry']['cacheEnabled'] ?? $currentFormData['telemetry']['cacheEnabled']);
     $currentFormData['telemetry']['cacheTtlMs'] = max(0, settings_int_value($importedConfig['telemetry']['cacheTtlMs'] ?? null, $currentFormData['telemetry']['cacheTtlMs']));
     $currentFormData['telemetry']['cacheFile'] = trim((string) ($importedConfig['telemetry']['cacheFile'] ?? $currentFormData['telemetry']['cacheFile']));
+    $currentFormData['telemetry']['atsCacheFile'] = trim((string) ($importedConfig['telemetry']['atsCacheFile'] ?? $currentFormData['telemetry']['atsCacheFile']));
 
     $currentFormData['snapshots']['enabled'] = (bool) ($importedConfig['snapshots']['enabled'] ?? $currentFormData['snapshots']['enabled']);
     $currentFormData['snapshots']['intervalMs'] = max(1000, settings_int_value($importedConfig['snapshots']['intervalMs'] ?? null, $currentFormData['snapshots']['intervalMs']));
     $currentFormData['snapshots']['directory'] = trim((string) ($importedConfig['snapshots']['directory'] ?? $currentFormData['snapshots']['directory']));
+    $currentFormData['snapshots']['atsDirectory'] = trim((string) ($importedConfig['snapshots']['atsDirectory'] ?? $currentFormData['snapshots']['atsDirectory']));
     $currentFormData['snapshots']['stateFile'] = trim((string) ($importedConfig['snapshots']['stateFile'] ?? $currentFormData['snapshots']['stateFile']));
+    $currentFormData['snapshots']['atsStateFile'] = trim((string) ($importedConfig['snapshots']['atsStateFile'] ?? $currentFormData['snapshots']['atsStateFile']));
     $currentFormData['snapshots']['prettyPrint'] = (bool) ($importedConfig['snapshots']['prettyPrint'] ?? $currentFormData['snapshots']['prettyPrint']);
     $currentFormData['snapshots']['filenamePrefix'] = trim((string) ($importedConfig['snapshots']['filenamePrefix'] ?? $currentFormData['snapshots']['filenamePrefix']));
+    $currentFormData['snapshots']['atsFilenamePrefix'] = trim((string) ($importedConfig['snapshots']['atsFilenamePrefix'] ?? $currentFormData['snapshots']['atsFilenamePrefix']));
     $currentFormData['snapshots']['filenamePattern'] = trim((string) ($importedConfig['snapshots']['filenamePattern'] ?? $currentFormData['snapshots']['filenamePattern']));
     $currentFormData['snapshots']['timestampFormat'] = trim((string) ($importedConfig['snapshots']['timestampFormat'] ?? $currentFormData['snapshots']['timestampFormat']));
 
@@ -328,20 +333,25 @@ $designConfig = [
 ];
 $telemetryConfig = [
     'upstreamUrl' => (string) dashboard_config_value('telemetry.upstreamUrl', 'http://127.0.0.1:31377/api/ets2/telemetry'),
+    'atsUpstreamUrl' => (string) dashboard_config_value('telemetry.atsUpstreamUrl', 'http://127.0.0.1:31377/api/ets2/telemetry'),
     'refreshIntervalMs' => (int) dashboard_config_value('telemetry.refreshIntervalMs', 250),
     'requestTimeoutMs' => (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500),
     'jsonPrettyPrint' => (bool) dashboard_config_value('telemetry.jsonPrettyPrint', true),
     'cacheEnabled' => (bool) dashboard_config_value('telemetry.cacheEnabled', true),
     'cacheTtlMs' => (int) dashboard_config_value('telemetry.cacheTtlMs', 10000),
     'cacheFile' => (string) dashboard_config_value('telemetry.cacheFile', __DIR__ . '/tmp/telemetry-cache.json'),
+    'atsCacheFile' => (string) dashboard_config_value('telemetry.atsCacheFile', __DIR__ . '/tmp/telemetry-ats-cache.json'),
 ];
 $snapshotConfig = [
     'enabled' => (bool) dashboard_config_value('snapshots.enabled', false),
     'intervalMs' => (int) dashboard_config_value('snapshots.intervalMs', 60000),
     'directory' => (string) dashboard_config_value('snapshots.directory', __DIR__ . '/snapshots'),
+    'atsDirectory' => (string) dashboard_config_value('snapshots.atsDirectory', __DIR__ . '/snapshots/ats'),
     'stateFile' => (string) dashboard_config_value('snapshots.stateFile', __DIR__ . '/tmp/snapshot-state.json'),
+    'atsStateFile' => (string) dashboard_config_value('snapshots.atsStateFile', __DIR__ . '/tmp/snapshot-ats-state.json'),
     'prettyPrint' => (bool) dashboard_config_value('snapshots.prettyPrint', true),
     'filenamePrefix' => (string) dashboard_config_value('snapshots.filenamePrefix', 'telemetry-'),
+    'atsFilenamePrefix' => (string) dashboard_config_value('snapshots.atsFilenamePrefix', 'telemetry-ats-'),
     'filenamePattern' => (string) dashboard_config_value('snapshots.filenamePattern', '{prefix}{date}-{ms}Z.{ext}'),
     'timestampFormat' => (string) dashboard_config_value('snapshots.timestampFormat', 'Y-m-d\TH-i-s'),
 ];
@@ -524,20 +534,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             ],
             'telemetry' => [
                 'upstreamUrl' => trim((string) ($_POST['telemetry_upstream_url'] ?? $telemetryConfig['upstreamUrl'])),
+                'atsUpstreamUrl' => trim((string) ($_POST['telemetry_ats_upstream_url'] ?? $telemetryConfig['atsUpstreamUrl'])),
                 'refreshIntervalMs' => max(100, settings_int_value($_POST['telemetry_refresh_interval_ms'] ?? null, $telemetryConfig['refreshIntervalMs'])),
                 'requestTimeoutMs' => max(500, settings_int_value($_POST['telemetry_request_timeout_ms'] ?? null, $telemetryConfig['requestTimeoutMs'])),
                 'jsonPrettyPrint' => settings_checkbox_post('telemetry_json_pretty_print'),
                 'cacheEnabled' => settings_checkbox_post('telemetry_cache_enabled'),
                 'cacheTtlMs' => max(0, settings_int_value($_POST['telemetry_cache_ttl_ms'] ?? null, $telemetryConfig['cacheTtlMs'])),
                 'cacheFile' => trim((string) ($_POST['telemetry_cache_file'] ?? $telemetryConfig['cacheFile'])),
+                'atsCacheFile' => trim((string) ($_POST['telemetry_ats_cache_file'] ?? $telemetryConfig['atsCacheFile'])),
             ],
             'snapshots' => [
                 'enabled' => settings_checkbox_post('snapshot_enabled'),
                 'intervalMs' => max(1000, settings_int_value($_POST['snapshot_interval_ms'] ?? null, $snapshotConfig['intervalMs'])),
                 'directory' => trim((string) ($_POST['snapshot_directory'] ?? $snapshotConfig['directory'])),
+                'atsDirectory' => trim((string) ($_POST['snapshot_ats_directory'] ?? $snapshotConfig['atsDirectory'])),
                 'stateFile' => trim((string) ($_POST['snapshot_state_file'] ?? $snapshotConfig['stateFile'])),
+                'atsStateFile' => trim((string) ($_POST['snapshot_ats_state_file'] ?? $snapshotConfig['atsStateFile'])),
                 'prettyPrint' => settings_checkbox_post('snapshot_pretty_print'),
                 'filenamePrefix' => trim((string) ($_POST['snapshot_filename_prefix'] ?? $snapshotConfig['filenamePrefix'])),
+                'atsFilenamePrefix' => trim((string) ($_POST['snapshot_ats_filename_prefix'] ?? $snapshotConfig['atsFilenamePrefix'])),
                 'filenamePattern' => trim((string) ($_POST['snapshot_filename_pattern'] ?? $snapshotConfig['filenamePattern'])),
                 'timestampFormat' => trim((string) ($_POST['snapshot_timestamp_format'] ?? $snapshotConfig['timestampFormat'])),
             ],
@@ -601,8 +616,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $errors[] = 'Telemetry upstream URL cannot be empty.';
         }
 
+        if ($formData['telemetry']['atsUpstreamUrl'] === '') {
+            $errors[] = 'ATS telemetry upstream URL cannot be empty.';
+        }
+
         if ($formData['telemetry']['cacheFile'] === '') {
             $errors[] = 'Telemetry cache file cannot be empty.';
+        }
+
+        if ($formData['telemetry']['atsCacheFile'] === '') {
+            $errors[] = 'ATS telemetry cache file cannot be empty.';
         }
 
         if ($formData['frontend']['telemetryEndpoint'] === '') {
@@ -613,8 +636,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $errors[] = 'Snapshot directory cannot be empty.';
         }
 
+        if ($formData['snapshots']['atsDirectory'] === '') {
+            $errors[] = 'ATS snapshot directory cannot be empty.';
+        }
+
         if ($formData['snapshots']['stateFile'] === '') {
             $errors[] = 'Snapshot state file cannot be empty.';
+        }
+
+        if ($formData['snapshots']['atsStateFile'] === '') {
+            $errors[] = 'ATS snapshot state file cannot be empty.';
+        }
+
+        if ($formData['snapshots']['atsFilenamePrefix'] === '') {
+            $errors[] = 'ATS snapshot filename prefix cannot be empty.';
         }
 
         if ($formData['snapshots']['filenamePattern'] === '') {
@@ -899,6 +934,11 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                 <input id="telemetry-upstream-url" name="telemetry_upstream_url" type="text" value="<?php echo htmlspecialchars($formData['telemetry']['upstreamUrl'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">Local ETS2 telemetry endpoint that PHP reads from before the dashboard serves its own JSON.</span>
                             </div>
+                            <div class="field full">
+                                <label for="telemetry-ats-upstream-url">ATS telemetry upstream URL</label>
+                                <input id="telemetry-ats-upstream-url" name="telemetry_ats_upstream_url" type="text" value="<?php echo htmlspecialchars($formData['telemetry']['atsUpstreamUrl'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Local ATS telemetry endpoint used by telemetryAts.php.</span>
+                            </div>
                             <div class="toggle-card">
                                 <div class="toggle-copy">
                                     <span class="toggle-title">Pretty print telemetry JSON</span>
@@ -939,6 +979,11 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                 <input id="telemetry-cache-file" name="telemetry_cache_file" type="text" value="<?php echo htmlspecialchars($formData['telemetry']['cacheFile'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">The JSON file written and read by the telemetry cache layer.</span>
                             </div>
+                            <div class="field">
+                                <label for="telemetry-ats-cache-file">ATS cache file path</label>
+                                <input id="telemetry-ats-cache-file" name="telemetry_ats_cache_file" type="text" value="<?php echo htmlspecialchars($formData['telemetry']['atsCacheFile'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">The JSON cache file used by the ATS telemetry layer.</span>
+                            </div>
                         </div>
                     </section>
 
@@ -954,11 +999,13 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                             <div class="row"><strong>Page title</strong><span><?php echo htmlspecialchars($formData['app']['pageTitle'], ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Telemetry endpoint</strong><span><?php echo htmlspecialchars($formData['frontend']['telemetryEndpoint'], ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Upstream URL</strong><span><?php echo htmlspecialchars($formData['telemetry']['upstreamUrl'], ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>ATS upstream URL</strong><span><?php echo htmlspecialchars($formData['telemetry']['atsUpstreamUrl'], ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Refresh interval</strong><span><?php echo htmlspecialchars(settings_format_ms((int) $formData['telemetry']['refreshIntervalMs']), ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Request timeout</strong><span><?php echo htmlspecialchars(settings_format_ms((int) $formData['telemetry']['requestTimeoutMs']), ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Cache status</strong><span><?php echo htmlspecialchars(settings_format_bool($formData['telemetry']['cacheEnabled']), ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Cache TTL</strong><span><?php echo htmlspecialchars(settings_format_ms((int) $formData['telemetry']['cacheTtlMs']), ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Cache file</strong><span><?php echo htmlspecialchars($formData['telemetry']['cacheFile'], ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>ATS cache file</strong><span><?php echo htmlspecialchars($formData['telemetry']['atsCacheFile'], ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>JSON output</strong><span><?php echo htmlspecialchars($formData['telemetry']['jsonPrettyPrint'] ? 'Pretty printed' : 'Compact', ENT_QUOTES, 'UTF-8'); ?></span></div>
                         </div>
                         <div class="note">Environment variables still win over matching file settings, so this page is best for local defaults and day-to-day project tuning.</div>
@@ -1241,15 +1288,30 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                 <input id="snapshot-state-file" name="snapshot_state_file" type="text" value="<?php echo htmlspecialchars($formData['snapshots']['stateFile'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">Tracks the last saved snapshot to avoid duplicate writes.</span>
                             </div>
+                            <div class="field">
+                                <label for="snapshot-ats-state-file">ATS snapshot state file</label>
+                                <input id="snapshot-ats-state-file" name="snapshot_ats_state_file" type="text" value="<?php echo htmlspecialchars($formData['snapshots']['atsStateFile'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Tracks the last saved ATS snapshot separately.</span>
+                            </div>
                             <div class="field full">
                                 <label for="snapshot-directory">Snapshot directory</label>
                                 <input id="snapshot-directory" name="snapshot_directory" type="text" value="<?php echo htmlspecialchars($formData['snapshots']['directory'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">Files like <code>telemetry-2026-04-15T21-13-45-432Z.json</code> will be written here.</span>
                             </div>
+                            <div class="field full">
+                                <label for="snapshot-ats-directory">ATS snapshot directory</label>
+                                <input id="snapshot-ats-directory" name="snapshot_ats_directory" type="text" value="<?php echo htmlspecialchars($formData['snapshots']['atsDirectory'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Files from telemetryAts.php are written here.</span>
+                            </div>
                             <div class="field">
                                 <label for="snapshot-filename-prefix">Snapshot filename prefix</label>
                                 <input id="snapshot-filename-prefix" name="snapshot_filename_prefix" type="text" value="<?php echo htmlspecialchars($formData['snapshots']['filenamePrefix'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">Inserted wherever <code>{prefix}</code> appears in the naming pattern.</span>
+                            </div>
+                            <div class="field">
+                                <label for="snapshot-ats-filename-prefix">ATS snapshot filename prefix</label>
+                                <input id="snapshot-ats-filename-prefix" name="snapshot_ats_filename_prefix" type="text" value="<?php echo htmlspecialchars($formData['snapshots']['atsFilenamePrefix'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Inserted for ATS snapshots wherever <code>{prefix}</code> appears.</span>
                             </div>
                             <div class="field">
                                 <label for="snapshot-timestamp-format">Snapshot timestamp format</label>
@@ -1275,9 +1337,12 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                         <div class="runtime">
                             <div class="row"><strong>Snapshot interval</strong><span><?php echo htmlspecialchars(settings_format_ms((int) $formData['snapshots']['intervalMs']), ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Snapshot dir</strong><span><?php echo htmlspecialchars($formData['snapshots']['directory'], ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>ATS snapshot dir</strong><span><?php echo htmlspecialchars($formData['snapshots']['atsDirectory'], ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>State file</strong><span><?php echo htmlspecialchars($formData['snapshots']['stateFile'], ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>ATS state file</strong><span><?php echo htmlspecialchars($formData['snapshots']['atsStateFile'], ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>JSON format</strong><span><?php echo htmlspecialchars($formData['snapshots']['prettyPrint'] ? 'Pretty printed' : 'Compact', ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>File prefix</strong><span><?php echo htmlspecialchars($formData['snapshots']['filenamePrefix'], ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>ATS file prefix</strong><span><?php echo htmlspecialchars($formData['snapshots']['atsFilenamePrefix'], ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Timestamp format</strong><span><code><?php echo htmlspecialchars($formData['snapshots']['timestampFormat'], ENT_QUOTES, 'UTF-8'); ?></code></span></div>
                             <div class="row"><strong>Filename preview</strong><span><?php echo htmlspecialchars($snapshotFilenamePreview, ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Total files</strong><span><?php echo htmlspecialchars((string) $snapshotFileCount, ENT_QUOTES, 'UTF-8'); ?></span></div>

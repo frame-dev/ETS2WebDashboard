@@ -286,7 +286,14 @@ function fetch_ats_telemetry_data($telemetry_url = AMERICAN_TRUCK_SIMULATOR_TELE
 }
 
 $telemetry_source = null;
-$json_data = fetch_ats_telemetry_data(AMERICAN_TRUCK_SIMULATOR_TELEMETRY, $telemetry_source);
+$json_data = [];
+$ats_telemetry_direct_format = basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')
+    ? (string) ($_GET['format'] ?? '')
+    : null;
+
+if ($ats_telemetry_direct_format === null || $ats_telemetry_direct_format === '' || $ats_telemetry_direct_format === 'json') {
+    $json_data = fetch_ats_telemetry_data(AMERICAN_TRUCK_SIMULATOR_TELEMETRY, $telemetry_source);
+}
 
 if (
     basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '') &&
@@ -306,5 +313,22 @@ if (
         'source' => $telemetry_source,
         'data' => $json_data,
     ], $jsonFlags);
+    exit;
+}
+
+if (
+    basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '') &&
+    $ats_telemetry_direct_format !== null &&
+    $ats_telemetry_direct_format !== ''
+) {
+    http_response_code(400);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    echo json_encode([
+        'Success' => false,
+        'error' => 'Unsupported ATS telemetry format.',
+        'supportedFormats' => ['json'],
+    ], JSON_UNESCAPED_SLASHES);
     exit;
 }

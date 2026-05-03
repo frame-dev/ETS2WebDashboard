@@ -3,10 +3,49 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/telemetryAts.php';
 
-$pageTitle = (string) dashboard_config_value('app.pageTitle', 'ETS2 Command Dashboard');
-$documentTitle = 'American Truck Simulator Dashboard';
-$themeVariables = dashboard_design_theme_variables([
+function ats_index_get_telemetry_value(array $data, string $path, mixed $default = null): mixed
+{
+    $value = $data;
+    foreach (explode('.', $path) as $segment) {
+        if (!is_array($value) || !array_key_exists($segment, $value)) {
+            return $default;
+        }
+
+        $value = $value[$segment];
+    }
+
+    return $value;
+}
+
+function ats_index_get_job_delivered_details(array $data): mixed
+{
+    return ats_index_get_telemetry_value($data, 'gameplay.jobDeliveredDetails', []);
+}
+
+function ats_index_get_job_cargo(array $data): mixed
+{
+    return ats_index_get_telemetry_value($data, 'job.cargo', '');
+}
+
+function ats_index_get_job_source_city(array $data): mixed
+{
+    return ats_index_get_telemetry_value($data, 'job.sourceCity', '');
+}
+
+function ats_index_get_job_destination_city(array $data): mixed
+{
+    return ats_index_get_telemetry_value($data, 'job.destinationCity', '');
+}
+
+$app_config = dashboard_config();
+$app_title = (string) dashboard_config_value('app.atsPageTitle', 'ATS Command Dashboard');
+$app_description = (string) dashboard_config_value('app.atsMetaDescription', 'Live ATS dashboard for telemetry, route status, systems, and map tracking.');
+$hero_eyebrow = (string) dashboard_config_value('app.atsHeroEyebrow', 'American Truck Simulator');
+$hero_title = (string) dashboard_config_value('app.atsHeroTitle', 'ATS command dashboard online');
+$hero_summary = (string) dashboard_config_value('app.atsHeroSummary', 'Preparing a live American Truck Simulator operator view from your local telemetry feed.');
+$design_config = [
     'accentColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.accentColor', '#54EFC7'), '#54EFC7'),
     'accentSecondaryColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.accentSecondaryColor', '#79C7FF'), '#79C7FF'),
     'accentWarmColor' => dashboard_sanitize_hex_color((string) dashboard_config_value('design.accentWarmColor', '#FFBF69'), '#FFBF69'),
@@ -17,437 +56,298 @@ $themeVariables = dashboard_design_theme_variables([
     'heroMapPlayerFontSizeRem' => (float) dashboard_config_value('design.heroMapPlayerFontSizeRem', 0.95),
     'panelRadiusPx' => (int) dashboard_config_value('design.panelRadiusPx', 28),
     'glassBlurPx' => (int) dashboard_config_value('design.glassBlurPx', 26),
-]);
-
-$themeDeclarations = [];
-foreach ($themeVariables as $name => $value) {
-    $themeDeclarations[] = $name . ':' . $value;
+];
+$dashboard_theme_css_variables = dashboard_design_theme_variables($design_config);
+$dashboard_theme_declarations = [];
+foreach ($dashboard_theme_css_variables as $name => $value) {
+    $dashboard_theme_declarations[] = $name . ':' . $value;
 }
-$themeCss = ':root{' . implode(';', $themeDeclarations) . ';}';
+$dashboard_theme_css = ':root{' . implode(';', $dashboard_theme_declarations) . ';}';
+
+$refresh_interval_ms = (int) get_ats_telemetry_refresh_interval_ms();
+$frontend_config = is_array($app_config['frontend'] ?? null) ? $app_config['frontend'] : [];
+$storage_keys = is_array($frontend_config['storageKeys'] ?? null) ? $frontend_config['storageKeys'] : [];
+$ats_storage_keys = is_array($frontend_config['atsStorageKeys'] ?? null) ? $frontend_config['atsStorageKeys'] : [];
+$storage_keys['mapPreferences'] = (string) ($ats_storage_keys['mapPreferences'] ?? 'ats-dashboard-map-preferences');
+$job_finished_details = ats_index_get_job_delivered_details($json_data);
+$job_finished_details = is_array($job_finished_details) ? $job_finished_details : [];
+$job_finished_cargo = trim((string) ats_index_get_job_cargo($json_data));
+$job_finished_source = trim((string) ats_index_get_job_source_city($json_data));
+$job_finished_destination = trim((string) ats_index_get_job_destination_city($json_data));
+$job_finished_route = implode(' -> ', array_filter([$job_finished_source, $job_finished_destination], static fn($value): bool => $value !== ''));
+$job_finished_revenue = isset($job_finished_details['revenue']) && is_numeric($job_finished_details['revenue'])
+    ? 'Income ' . number_format((float) $job_finished_details['revenue'], 0, '.', "'")
+    : 'Income --';
+$job_finished_xp = isset($job_finished_details['earnedXp']) && is_numeric($job_finished_details['earnedXp'])
+    ? 'XP ' . number_format((float) $job_finished_details['earnedXp'], 0, '.', "'")
+    : 'XP --';
+$job_finished_distance = isset($job_finished_details['distanceKm']) && is_numeric($job_finished_details['distanceKm'])
+    ? number_format((float) $job_finished_details['distanceKm'], ((float) $job_finished_details['distanceKm'] < 10 ? 1 : 0), '.', "'") . ' km'
+    : '-- km';
+$job_finished_parking = !empty($job_finished_details['autoParked']) ? 'Auto parked' : 'Manual parking';
+$job_finished_title = $job_finished_cargo !== '' ? $job_finished_cargo : 'Delivery completed';
+$job_finished_meta = $job_finished_route !== '' ? $job_finished_route : 'Route unavailable';
+$initial_payload = [
+    'refreshIntervalMs' => $refresh_interval_ms,
+    'fetchedAt' => gmdate('c'),
+    'source' => $telemetry_source,
+    'data' => $json_data,
+];
+
+$dashboard_config = [
+    'telemetryEndpoint' => (string) dashboard_config_value('frontend.atsTelemetryEndpoint', 'telemetryAts.php?format=json'),
+    'tileProxyEndpoint' => 'tile-proxy.php',
+    'refreshIntervalMs' => $refresh_interval_ms,
+    'telemetryRequestTimeoutMs' => (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500),
+    'remoteTelemetryUrls' => is_array($frontend_config['remoteTelemetryUrls'] ?? null) ? $frontend_config['remoteTelemetryUrls'] : [],
+    'playersRefreshMs' => (int) (($frontend_config['playersRefreshMs'] ?? null) ?? (($frontend_config['players']['refreshMs'] ?? null) ?? 250)),
+    'playersRadiusDefault' => (int) (($frontend_config['playersRadiusDefault'] ?? null) ?? (($frontend_config['players']['radiusDefault'] ?? null) ?? 5500)),
+    'playersServerDefault' => (int) (($frontend_config['playersServerDefault'] ?? null) ?? (($frontend_config['players']['serverDefault'] ?? null) ?? 50)),
+    'telemetryPolling' => is_array($frontend_config['telemetryPolling'] ?? null) ? $frontend_config['telemetryPolling'] : [],
+    'speedRing' => is_array($frontend_config['speedRing'] ?? null) ? $frontend_config['speedRing'] : [],
+    'popupEvents' => is_array($frontend_config['popupEvents'] ?? null) ? $frontend_config['popupEvents'] : [],
+    'storageKeys' => $storage_keys,
+    'routePlanner' => is_array($frontend_config['routePlanner'] ?? null) ? $frontend_config['routePlanner'] : [],
+    'mapDefaults' => is_array($frontend_config['mapDefaults'] ?? null) ? $frontend_config['mapDefaults'] : [],
+    'mapBounds' => is_array($frontend_config['atsMapBounds'] ?? null) ? $frontend_config['atsMapBounds'] : (is_array($frontend_config['mapBounds'] ?? null) ? $frontend_config['mapBounds'] : []),
+    'mapTiles' => is_array($frontend_config['atsMapTiles'] ?? null) ? $frontend_config['atsMapTiles'] : (is_array($frontend_config['mapTiles'] ?? null) ? $frontend_config['mapTiles'] : []),
+    'mapSources' => is_array($frontend_config['atsMapSources'] ?? null) ? $frontend_config['atsMapSources'] : (is_array($frontend_config['mapSources'] ?? null) ? $frontend_config['mapSources'] : []),
+    'initialPayload' => $initial_payload,
+];
+
+$json_flags = JSON_UNESCAPED_SLASHES
+    | JSON_UNESCAPED_UNICODE
+    | JSON_HEX_TAG
+    | JSON_HEX_AMP
+    | JSON_HEX_APOS
+    | JSON_HEX_QUOT;
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="American Truck Simulator dashboard preview and project status page.">
-    <title><?php echo htmlspecialchars($documentTitle, ENT_QUOTES, 'UTF-8'); ?></title>
+    <meta name="description" content="<?php echo htmlspecialchars($app_description, ENT_QUOTES, 'UTF-8'); ?>">
+    <title><?php echo htmlspecialchars($app_title, ENT_QUOTES, 'UTF-8'); ?></title>
+    <link rel="stylesheet" href="indexAts.css">
     <style>
-        <?php echo $themeCss; ?>
-
-        :root {
-            color-scheme: dark;
-            --ats-sand: #f3c17c;
-            --ats-sunset: #ff8f5f;
-            --ats-sky: #6fc6ff;
-            --ats-deep: #071019;
-            --ats-surface: rgba(10, 19, 30, 0.82);
-            --ats-stroke: rgba(255, 214, 153, 0.16);
-            --ats-text: #eff8ff;
-            --ats-muted: #a7bdcf;
-            --ats-shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
-        }
-
-        * {
-            box-sizing: border-box;
-        }
-
-        html {
-            min-height: 100%;
-            background:
-                radial-gradient(circle at top left, rgba(255, 191, 105, 0.18), transparent 26%),
-                radial-gradient(circle at top right, rgba(111, 198, 255, 0.16), transparent 24%),
-                linear-gradient(165deg, #05080d 0%, #0a1320 46%, #080f19 100%);
-        }
-
-        body {
-            margin: 0;
-            min-height: 100vh;
-            color: var(--ats-text);
-            font-family: var(--ui-font-family);
-            font-size: calc(16px * var(--ui-font-scale));
-            line-height: 1.45;
-            background:
-                radial-gradient(circle at 12% 18%, rgba(255, 191, 105, 0.12), transparent 0 20rem),
-                radial-gradient(circle at 88% 10%, rgba(111, 198, 255, 0.08), transparent 0 22rem),
-                radial-gradient(circle at 50% 100%, rgba(255, 143, 95, 0.08), transparent 0 28rem);
-            overflow-x: hidden;
-        }
-
-        body::before {
-            content: "";
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            opacity: 0.2;
-            background:
-                linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
-            background-size: 32px 32px;
-            mask-image: radial-gradient(circle at center, black 42%, transparent 88%);
-        }
-
-        a {
-            color: inherit;
-        }
-
-        .page-shell {
-            width: min(1180px, calc(100% - 28px));
-            margin: 18px auto;
-            padding: 18px 0 28px;
-        }
-
-        .top-row {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .brand-badge,
-        .top-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            min-height: 48px;
-            padding: 0 16px;
-            border-radius: 18px;
-            border: 1px solid var(--ats-stroke);
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
-                rgba(8, 16, 26, 0.64);
-            backdrop-filter: blur(var(--glass-blur-strength)) saturate(140%);
-            box-shadow: var(--ats-shadow);
-            text-decoration: none;
-        }
-
-        .brand-badge strong {
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            font-size: 0.84rem;
-        }
-
-        .hero {
-            position: relative;
-            overflow: hidden;
-            padding: 28px;
-            border-radius: 32px;
-            border: 1px solid rgba(255, 214, 153, 0.2);
-            background:
-                linear-gradient(160deg, rgba(9, 18, 30, 0.94), rgba(10, 22, 37, 0.86)),
-                radial-gradient(circle at top left, rgba(255, 191, 105, 0.18), transparent 38%),
-                radial-gradient(circle at bottom right, rgba(111, 198, 255, 0.12), transparent 34%);
-            box-shadow: var(--ats-shadow);
-        }
-
-        .hero::after {
-            content: "";
-            position: absolute;
-            right: -120px;
-            bottom: -110px;
-            width: 420px;
-            height: 420px;
-            border-radius: 50%;
-            background:
-                radial-gradient(circle, rgba(255, 191, 105, 0.18) 0%, rgba(255, 143, 95, 0.1) 42%, transparent 72%);
-            filter: blur(14px);
-            pointer-events: none;
-        }
-
-        .hero-grid {
-            position: relative;
-            z-index: 1;
-            display: grid;
-            grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.8fr);
-            gap: 20px;
-        }
-
-        .eyebrow {
-            margin: 0 0 12px;
-            color: var(--ats-sand);
-            font-size: 0.76rem;
-            font-weight: 700;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-        }
-
-        h1 {
-            margin: 0;
-            max-width: 12ch;
-            font-size: clamp(2.6rem, 6vw, 5.4rem);
-            line-height: 0.94;
-            letter-spacing: -0.04em;
-        }
-
-        .hero-copy {
-            margin: 16px 0 0;
-            max-width: 60ch;
-            color: var(--ats-muted);
-            font-size: 1rem;
-        }
-
-        .hero-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            margin-top: 20px;
-        }
-
-        .action-link {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 48px;
-            padding: 0 18px;
-            border-radius: 16px;
-            border: 1px solid rgba(255, 214, 153, 0.18);
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-                rgba(9, 18, 30, 0.48);
-            color: var(--ats-text);
-            font-weight: 700;
-            text-decoration: none;
-        }
-
-        .action-link.primary {
-            border-color: rgba(255, 191, 105, 0.28);
-            background:
-                linear-gradient(180deg, rgba(255, 191, 105, 0.22), rgba(255, 143, 95, 0.14)),
-                rgba(9, 18, 30, 0.48);
-        }
-
-        .status-card {
-            display: grid;
-            gap: 14px;
-            align-content: start;
-            padding: 18px;
-            border-radius: 24px;
-            border: 1px solid rgba(255, 214, 153, 0.16);
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.018)),
-                rgba(7, 14, 23, 0.56);
-        }
-
-        .status-pill {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: fit-content;
-            min-height: 30px;
-            padding: 4px 12px;
-            border-radius: 999px;
-            border: 1px solid rgba(255, 191, 105, 0.24);
-            background: rgba(255, 191, 105, 0.12);
-            color: #ffe6ba;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-        }
-
-        .status-list {
-            display: grid;
-            gap: 10px;
-        }
-
-        .status-item {
-            padding: 12px 14px;
-            border-radius: 16px;
-            border: 1px solid rgba(184, 226, 255, 0.1);
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .status-item strong {
-            display: block;
-            margin-bottom: 4px;
-            font-size: 0.92rem;
-        }
-
-        .status-item span {
-            color: var(--ats-muted);
-            font-size: 0.82rem;
-        }
-
-        .section-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 16px;
-            margin-top: 18px;
-        }
-
-        .panel {
-            padding: 20px;
-            border-radius: 24px;
-            border: 1px solid rgba(184, 226, 255, 0.12);
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
-                rgba(9, 18, 30, 0.48);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-        }
-
-        .panel h2 {
-            margin: 0 0 8px;
-            font-size: 1.1rem;
-        }
-
-        .panel p,
-        .panel li {
-            color: var(--ats-muted);
-        }
-
-        .panel ul {
-            margin: 0;
-            padding-left: 18px;
-        }
-
-        .roadmap {
-            margin-top: 18px;
-            padding: 22px;
-            border-radius: 28px;
-            border: 1px solid rgba(255, 214, 153, 0.16);
-            background:
-                linear-gradient(160deg, rgba(9, 18, 30, 0.9), rgba(10, 22, 37, 0.82)),
-                radial-gradient(circle at right, rgba(255, 143, 95, 0.12), transparent 34%);
-        }
-
-        .roadmap h2 {
-            margin: 0 0 12px;
-            font-size: 1.24rem;
-        }
-
-        .roadmap-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 12px;
-        }
-
-        .roadmap-item {
-            padding: 14px;
-            border-radius: 18px;
-            border: 1px solid rgba(184, 226, 255, 0.1);
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .roadmap-item strong {
-            display: block;
-            margin-bottom: 6px;
-        }
-
-        @media (max-width: 980px) {
-            .hero-grid,
-            .section-grid,
-            .roadmap-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .hero {
-                padding: 22px;
-            }
-        }
-
-        @media (max-width: 640px) {
-            .page-shell {
-                width: min(100%, calc(100% - 16px));
-                margin: 8px auto;
-                padding: 8px 0 18px;
-            }
-
-            .hero,
-            .panel,
-            .roadmap {
-                border-radius: 22px;
-            }
-
-            h1 {
-                font-size: clamp(2.2rem, 12vw, 3.6rem);
-            }
-        }
+        <?php echo $dashboard_theme_css; ?>
     </style>
 </head>
+
 <body>
-    <main class="page-shell">
-        <div class="top-row">
-            <div class="brand-badge">
-                <strong><?php echo htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8'); ?></strong>
+    <?php
+    ?>
+    <noscript>
+        <p>This dashboard requires JavaScript to render live telemetry and map updates.</p>
+    </noscript>
+    <main class="dashboard-shell">
+        <div class="top-toolbar">
+            <div class="speed-meta">
+                <div class="status-stack">
+                    <span class="meta-label">Connection</span>
+                    <strong id="connection-status" role="status" aria-live="polite">Connecting...</strong>
+                </div>
+                <div class="status-stack">
+                    <span class="meta-label">Last Update</span>
+                    <strong id="last-updated" aria-live="polite">Initial load</strong>
+                </div>
+                <div class="status-stack">
+                    <span class="meta-label">Refresh</span>
+                    <strong id="refresh-interval"><?php echo $refresh_interval_ms; ?> ms</strong>
+                </div>
             </div>
-            <a class="top-link" href="indexV2.php">Back to ETS2 Dashboard</a>
+            <button class="toolbar-toggle-button" type="button" id="truckersmp-toggle" aria-pressed="true" aria-label="Toggle TruckersMP player markers">
+                TruckersMP
+            </button>
+            <button class="help-link" type="button" id="help-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="dashboard-help">
+                <span class="help-link-icon" aria-hidden="true">?</span>
+                <span class="help-link-copy">
+                    <span class="help-link-label">Help</span>
+                    <span class="help-link-meta">Controls & guide</span>
+                </span>
+            </button>
+            <a href="settings.php" class="settings-link" aria-label="Dashboard settings and configuration">
+                <span class="settings-link-icon" aria-hidden="true">O</span>
+                <span class="settings-link-copy">
+                    <span class="settings-link-label">Settings</span>
+                </span>
+            </a>
         </div>
+        <section class="hero-panel">
+            <div class="hero-copy">
+                <p class="eyebrow"><?php echo htmlspecialchars($hero_eyebrow, ENT_QUOTES, 'UTF-8'); ?></p>
+                <h1 id="hero-title"><?php echo htmlspecialchars($hero_title, ENT_QUOTES, 'UTF-8'); ?></h1>
+                <p class="hero-summary" id="hero-summary"><?php echo htmlspecialchars($hero_summary, ENT_QUOTES, 'UTF-8'); ?></p>
+                <div class="dashboard-notices" id="dashboard-notices" hidden aria-live="polite"></div>
+            </div>
 
-        <section class="hero">
-            <div class="hero-grid">
-                <div>
-                    <p class="eyebrow">American Truck Simulator</p>
-                    <h1>ATS dashboard is on the road map</h1>
-                    <p class="hero-copy">
-                        This project already has the newer ETS2 dashboard flow, map system, settings workspace, and telemetry pipeline.
-                        The ATS page is now a proper project landing page instead of a blank placeholder, while the live ATS dashboard build is still in progress.
-                    </p>
-                    <div class="hero-actions">
-                        <a class="action-link primary" href="indexV2.php">Open Current Dashboard</a>
-                        <a class="action-link" href="settings.php">Open Settings</a>
-                        <a class="action-link" href="infos.php">Open Info Workspace</a>
+            <div class="hero-speed">
+                <span class="road-speed" id="road-speed-value">
+                    <span class="speed-readout-label">Road limit</span>
+                    <span class="speed-readout-reading">
+                        <span class="speed-readout-value" id="road-speed-limit">--</span>
+                        <span class="speed-readout-unit">mph</span>
+                    </span>
+                </span>
+                <div class="speed-ring" id="speed-ring">
+                    <span class="speed-limit-marker" id="speed-limit-marker" aria-hidden="true"></span>
+                    <div class="speed-ring-inner">
+                        <span class="speed-unit">mph</span>
+                        <span class="speed-value" id="hero-speed-value">0</span>
                     </div>
                 </div>
-
-                <aside class="status-card" aria-label="ATS status">
-                    <span class="status-pill">Work in Progress</span>
-                    <div class="status-list">
-                        <div class="status-item">
-                            <strong>Foundation ready</strong>
-                            <span>Telemetry polling, map sources, storage, and popup systems already exist in the shared codebase.</span>
-                        </div>
-                        <div class="status-item">
-                            <strong>Next step</strong>
-                            <span>Hook ATS telemetry into the same frontend patterns and adapt the route, map, and event views where game data differs.</span>
-                        </div>
-                        <div class="status-item">
-                            <strong>Current use</strong>
-                            <span>This page gives ATS a clean home while development continues, instead of dropping you onto bare HTML.</span>
-                        </div>
+                <span class="cruise-control-speed" id="cruise-control-speed">
+                    <span class="speed-readout-label">Cruise Control</span>
+                    <span class="speed-readout-reading">
+                        <span class="speed-readout-value" id="tempomat-speed-limit">--</span>
+                        <span class="speed-readout-unit">mph</span>
+                    </span>
+                </span>
+                <div class="speed-ring-stats" id="speed-ring-stats">
+                    <span class="speed-peak" id="speed-peak">Peak --</span>
+                    <span class="speed-trend" id="speed-trend">Trend --</span>
+                    <span class="speed-alert" id="speed-alert"></span>
+                </div>
+            </div>
+            <div class="hero-route">
+                <span class="from-to">From - To</span>
+                <span class="from-to-value" id="from-to-value">Not Active</span>
+                <span class="route-distance" id="route-distance">-- km</span>
+                <span class="fuel-range" id="fuel-range">-- km range</span>
+                <span class="route-time" id="route-time">ETA --:--</span>
+                <span class="route-real-time" id="route-real-time">REAL --:--</span>
+            </div>
+            <div class="hero-map" id="hero-map">
+                <div class="hero-map-stage" id="hero-map-stage" tabindex="0" aria-label="Hero map, use plus or minus to zoom and C to center">
+                    <div class="hero-map-tiles" id="hero-map-tiles"></div>
+                    <img class="hero-map-fallback" id="hero-map-fallback" src="map-ets2-preview.jpg" alt="Static ATS world map">
+                    <div class="hero-map-players" id="hero-map-players"></div>
+                    <div class="hero-map-marker" id="hero-map-marker">
+                        <span class="hero-map-marker-arrow" aria-hidden="true"></span>
+                        <span class="hero-map-marker-core"></span>
                     </div>
-                </aside>
+                </div>
+                <div class="hero-map-toolbar">
+                    <span class="hero-map-shortcuts" id="hero-map-shortcuts">Shortcuts: +/- zoom, C center</span>
+                    <select class="hero-map-select" id="hero-map-source" data-map-source-select aria-label="Select map source"></select>
+                    <button class="hero-map-button hero-map-center-button" type="button" id="hero-map-center" aria-label="Center hero map on truck">Center</button>
+                    <button class="hero-map-button" type="button" data-hero-map-zoom="out" aria-label="Zoom hero map out">-</button>
+                    <button class="hero-map-button" type="button" data-hero-map-zoom="in" aria-label="Zoom hero map in">+</button>
+                </div>
+                <div class="hero-map-job-overlay" id="hero-map-job-overlay" aria-live="polite">
+                    <span class="hero-map-job-line" id="hero-map-job-income">Income --</span>
+                    <span class="hero-map-job-line" id="hero-map-job-cargo">Job --</span>
+                    <span class="hero-map-job-line" id="hero-map-job-weight">Weight --</span>
+                </div>
+                <a class="more-info" href="infos_ats.php" aria-label="Open info panel">Info</a>
+                <div
+                    class="job-finished-popup"
+                    id="job-finished-popup"
+                    aria-live="polite"
+                    aria-hidden="true">
+                    <span class="job-finished-popup-badge" id="job-finished-popup-badge">Delivery complete</span>
+                    <strong class="job-finished-popup-title" id="job-finished-popup-title"><?php echo htmlspecialchars($job_finished_title, ENT_QUOTES, 'UTF-8'); ?></strong>
+                    <span class="job-finished-popup-meta" id="job-finished-popup-meta"><?php echo htmlspecialchars($job_finished_meta, ENT_QUOTES, 'UTF-8'); ?></span>
+                    <div class="job-finished-popup-stats">
+                        <span class="job-finished-popup-stat" id="job-finished-popup-revenue"><?php echo htmlspecialchars($job_finished_revenue, ENT_QUOTES, 'UTF-8'); ?></span>
+                        <span class="job-finished-popup-stat" id="job-finished-popup-xp"><?php echo htmlspecialchars($job_finished_xp, ENT_QUOTES, 'UTF-8'); ?></span>
+                        <span class="job-finished-popup-stat" id="job-finished-popup-distance"><?php echo htmlspecialchars($job_finished_distance, ENT_QUOTES, 'UTF-8'); ?></span>
+                        <span class="job-finished-popup-stat" id="job-finished-popup-parking"><?php echo htmlspecialchars($job_finished_parking, ENT_QUOTES, 'UTF-8'); ?></span>
+                    </div>
+                </div>
+                <div class="job-started-popup" id="job-started-popup" aria-live="polite" aria-hidden="true">
+                    <span class="job-started-popup-badge" id="job-started-popup-badge">New delivery</span>
+                    <strong class="job-started-popup-title" id="job-started-popup-title">Delivery ready</strong>
+                    <span class="job-started-popup-meta" id="job-started-popup-meta">Pickup unavailable -> Destination unavailable</span>
+                    <div class="job-started-popup-stats">
+                        <span class="job-started-popup-stat" id="job-started-popup-income">Income --</span>
+                        <span class="job-started-popup-stat" id="job-started-popup-distance">Distance --</span>
+                        <span class="job-started-popup-stat" id="job-started-popup-weight">Weight --</span>
+                        <span class="job-started-popup-stat" id="job-started-popup-deadline">Deadline --</span>
+                    </div>
+                </div>
             </div>
         </section>
-
-        <section class="section-grid" aria-label="ATS development summary">
-            <article class="panel">
-                <h2>What is planned</h2>
-                <p>The ATS version is intended to follow the same V2 dashboard direction: a clean driving HUD, live maps, detailed information panels, and browser-based settings.</p>
-            </article>
-            <article class="panel">
-                <h2>What already exists</h2>
-                <ul>
-                    <li>Live telemetry bridge in `telemetry.php`</li>
-                    <li>Modern dashboard flow in `indexV2.php`</li>
-                    <li>Secondary detail workspace in `infos.php`</li>
-                    <li>Managed configuration in `settings.php`</li>
-                </ul>
-            </article>
-            <article class="panel">
-                <h2>What will likely change</h2>
-                <p>ATS-specific city data, map coverage, branding, and some gameplay labels will need tuning, even though much of the core rendering can be shared.</p>
-            </article>
-        </section>
-
-        <section class="roadmap" aria-label="ATS roadmap">
-            <h2>Planned ATS milestones</h2>
-            <div class="roadmap-grid">
-                <div class="roadmap-item">
-                    <strong>1. Shared telemetry hookup</strong>
-                    <span>Feed ATS payloads into the existing live frontend pipeline.</span>
+        <div class="help-overlay" id="help-overlay" hidden>
+            <div class="help-backdrop" data-help-close></div>
+            <section class="help-dialog" id="dashboard-help" role="dialog" aria-modal="true" aria-labelledby="help-title" aria-describedby="help-intro" tabindex="-1">
+                <div class="help-dialog-header">
+                    <div>
+                        <p class="help-eyebrow">Dashboard Help</p>
+                        <h2 id="help-title">Quick guide for the live ATS dashboard</h2>
+                        <p class="help-intro" id="help-intro">Everything important is here: what the main controls do, how the maps behave, where to go for deeper details, and what to check when something looks wrong.</p>
+                    </div>
+                    <button class="help-close-button" type="button" id="help-close" aria-label="Close help">Close</button>
                 </div>
-                <div class="roadmap-item">
-                    <strong>2. ATS map support</strong>
-                    <span>Align tile config, bounds, and route localization for ATS-compatible maps.</span>
+                <div class="help-grid">
+                    <article class="help-card">
+                        <h3>Start Here</h3>
+                        <ul class="help-list">
+                            <li><strong>Connection</strong> shows whether telemetry is reaching the dashboard right now.</li>
+                            <li><strong>Last Update</strong> tells you when the last telemetry payload arrived.</li>
+                            <li><strong>Refresh</strong> shows the polling interval used for live updates.</li>
+                            <li>The large center panel is your main driving view: speed, route, truck state, map, and notices.</li>
+                        </ul>
+                    </article>
+                    <article class="help-card">
+                        <h3>Main Controls</h3>
+                        <ul class="help-list">
+                            <li><strong>TruckersMP</strong> turns nearby player markers on or off.</li>
+                            <li><strong>Help</strong> opens this guide at any time.</li>
+                            <li><strong>Settings</strong> lets you change telemetry, map sources, design, and other saved dashboard options.</li>
+                            <li><strong>Info</strong> opens the detailed page with overview, systems, world, and debug tabs.</li>
+                        </ul>
+                    </article>
+                    <article class="help-card">
+                        <h3>Hero Map</h3>
+                        <ul class="help-list">
+                            <li>Use <strong>+</strong> and <strong>-</strong> to zoom the map.</li>
+                            <li>Press <strong>C</strong> or use <strong>Center</strong> to snap the map back to the truck.</li>
+                            <li>Drag the map to enter free pan mode. Centering restores follow-truck mode.</li>
+                            <li>The map selector lets you switch between <strong>Standard</strong> and <strong>ProMods</strong>. Bounds and tiles update automatically with the selected map.</li>
+                        </ul>
+                    </article>
+                    <article class="help-card">
+                        <h3>Driving Readouts</h3>
+                        <ul class="help-list">
+                            <li>The speed ring shows current speed, road speed limit, cruise control, peak, and trend.</li>
+                            <li>The route panel shows source, destination, planned distance, ETA, and estimated real time.</li>
+                            <li>The job overlay on the map summarizes income, cargo, and weight.</li>
+                            <li>When a new job starts, a centered popup summarizes cargo, route, income, distance, weight, and deadline.</li>
+                            <li>When a delivery finishes, the popup summarizes route, income, XP, distance, and parking result.</li>
+                        </ul>
+                    </article>
+                    <article class="help-card">
+                        <h3>Info Page</h3>
+                        <ul class="help-list">
+                            <li><strong>Overview</strong> gives route, truck profile, and alerts.</li>
+                            <li><strong>Systems</strong> shows health, drivetrain, trailer, controls, and lighting.</li>
+                            <li><strong>World</strong> includes the larger interactive map and world/navigation details.</li>
+                            <li><strong>Debug</strong> shows the raw telemetry JSON for troubleshooting.</li>
+                        </ul>
+                    </article>
+                    <article class="help-card">
+                        <h3>If Something Breaks</h3>
+                        <ul class="help-list">
+                            <li>If telemetry fails, check that the game telemetry API is reachable and the configured endpoint is correct.</li>
+                            <li>If map tiles do not load, the dashboard falls back to the static preview and retries automatically.</li>
+                            <li>If the truck is missing from the map, wait for a fresh telemetry update and confirm the game is connected.</li>
+                            <li>If the wrong map is shown, switch the map source selector or adjust map sources in settings.</li>
+                        </ul>
+                    </article>
                 </div>
-                <div class="roadmap-item">
-                    <strong>3. ATS polish pass</strong>
-                    <span>Adjust copy, panels, and event handling so the page feels native instead of copied over.</span>
+                <div class="help-dialog-footer">
+                    <span class="help-tip">Shortcuts: <strong>?</strong> opens help, <strong>Esc</strong> closes it, <strong>+</strong>/<strong>-</strong> zoom the active map, <strong>C</strong> centers it.</span>
                 </div>
-            </div>
-        </section>
+            </section>
+        </div>
     </main>
+    <script>
+        window.dashboardConfig = <?php echo json_encode($dashboard_config, $json_flags); ?>;
+    </script>
+    <script src="index_ats.js" defer></script>
 </body>
+
 </html>

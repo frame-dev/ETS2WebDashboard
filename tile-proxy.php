@@ -34,14 +34,43 @@ function tile_proxy_normalize_base_url(string $url): ?array
         ? (int) $parts['port']
         : ($scheme === 'https' ? 443 : 80);
     $path = isset($parts['path']) ? rtrim((string) $parts['path'], '/') : '';
-    $path = $path === '' ? '/' : $path;
+    $normalizedPath = tile_proxy_normalize_path($path === '' ? '/' : $path);
+    if ($normalizedPath === null) {
+        return null;
+    }
 
     return [
         'scheme' => $scheme,
         'host' => $host,
         'port' => $port,
-        'path' => $path,
+        'path' => $normalizedPath,
     ];
+}
+
+function tile_proxy_normalize_path(string $path): ?string
+{
+    $decoded = rawurldecode($path);
+    if (str_contains($decoded, "\0")) {
+        return null;
+    }
+
+    $segments = preg_split('#/+#', str_replace('\\', '/', $decoded)) ?: [];
+    $normalized = [];
+
+    foreach ($segments as $segment) {
+        if ($segment === '' || $segment === '.') {
+            continue;
+        }
+
+        if ($segment === '..') {
+            array_pop($normalized);
+            continue;
+        }
+
+        $normalized[] = $segment;
+    }
+
+    return '/' . implode('/', $normalized);
 }
 
 function tile_proxy_url_is_allowed(string $requestUrl, array $allowedBaseUrls): bool
@@ -96,6 +125,27 @@ function tile_proxy_allowed_base_urls(): array
     $mapSources = dashboard_config_value('frontend.mapSources', []);
     if (is_array($mapSources)) {
         foreach ($mapSources as $source) {
+            $baseUrlCandidates = is_array($source['baseUrlCandidates'] ?? null) ? $source['baseUrlCandidates'] : [];
+            foreach ($baseUrlCandidates as $baseUrl) {
+                if (is_string($baseUrl) && trim($baseUrl) !== '') {
+                    $normalized[] = trim($baseUrl);
+                }
+            }
+        }
+    }
+
+    $atsAllowedBaseUrls = dashboard_config_value('frontend.atsMapTiles.baseUrlCandidates', []);
+    if (is_array($atsAllowedBaseUrls)) {
+        foreach ($atsAllowedBaseUrls as $baseUrl) {
+            if (is_string($baseUrl) && trim($baseUrl) !== '') {
+                $normalized[] = trim($baseUrl);
+            }
+        }
+    }
+
+    $atsMapSources = dashboard_config_value('frontend.atsMapSources', []);
+    if (is_array($atsMapSources)) {
+        foreach ($atsMapSources as $source) {
             $baseUrlCandidates = is_array($source['baseUrlCandidates'] ?? null) ? $source['baseUrlCandidates'] : [];
             foreach ($baseUrlCandidates as $baseUrl) {
                 if (is_string($baseUrl) && trim($baseUrl) !== '') {
