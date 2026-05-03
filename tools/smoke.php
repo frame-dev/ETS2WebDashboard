@@ -36,6 +36,7 @@ require_once $root . DIRECTORY_SEPARATOR . 'config.php';
 $config = dashboard_config();
 $requiredPaths = [
     'app.pageTitle',
+    'app.atsPageTitle',
     'design.accentColor',
     'telemetry.upstreamUrl',
     'telemetry.atsUpstreamUrl',
@@ -47,6 +48,8 @@ $requiredPaths = [
     'snapshots.atsStateFile',
     'snapshots.atsFilenamePrefix',
     'frontend.telemetryEndpoint',
+    'frontend.atsMapSources',
+    'frontend.dashboardLayout',
     'frontend.mapSources',
 ];
 
@@ -69,6 +72,15 @@ foreach (['--teal', '--blue', '--amber', '--good', '--bad', '--ui-font-family'] 
     smoke_pass("Theme variable exists: {$cssVariable}");
 }
 
+foreach (['dashboard_escape', 'dashboard_json_encode_for_html_script', 'dashboard_config_array'] as $functionName) {
+    if (!function_exists($functionName)) {
+        smoke_fail($failures, "Missing shared helper {$functionName}");
+        continue;
+    }
+
+    smoke_pass("Shared helper exists: {$functionName}");
+}
+
 $routerSource = file_get_contents($root . DIRECTORY_SEPARATOR . 'router.php');
 if ($routerSource === false) {
     smoke_fail($failures, 'Unable to read router.php');
@@ -89,6 +101,20 @@ if ($routerSource === false) {
         }
 
         smoke_pass("Router guard exists: {$expectedGuard}");
+    }
+}
+
+$settingsSource = file_get_contents($root . DIRECTORY_SEPARATOR . 'settings.php');
+if ($settingsSource === false) {
+    smoke_fail($failures, 'Unable to read settings.php');
+} else {
+    foreach (['snapshot_download', 'snapshot_delete_file', 'snapshot_prune', 'snapshot_reset_state'] as $expectedSnapshotAction) {
+        if (!str_contains($settingsSource, $expectedSnapshotAction)) {
+            smoke_fail($failures, "Missing snapshot management action {$expectedSnapshotAction}");
+            continue;
+        }
+
+        smoke_pass("Snapshot management action exists: {$expectedSnapshotAction}");
     }
 }
 

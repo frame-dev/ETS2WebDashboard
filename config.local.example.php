@@ -6,6 +6,8 @@ return [
     'app' => [
         'pageTitle' => 'ETS2 Dashboard (Local)',
         'heroTitle' => 'Local command center online',
+        'atsPageTitle' => 'ATS Dashboard (Local)',
+        'atsHeroTitle' => 'Local ATS command center online',
     ],
     'design' => [
         'accentColor' => '#54EFC7',
@@ -68,6 +70,24 @@ return [
         'storageKeys' => [
             'activeTab' => 'ets2-dashboard-active-tab',
             'mapPreferences' => 'ets2-dashboard-map-preferences',
+            'dashboardWidgets' => 'ets2-dashboard-widgets-visible',
+        ],
+        'dashboardLayout' => [
+            'deviceMapDefaults' => [
+                'desktop' => ['worldZoom' => 4, 'heroZoom' => 3, 'worldFollowTruck' => true, 'heroFollowTruck' => true],
+                'tablet' => ['worldZoom' => 3, 'heroZoom' => 2, 'worldFollowTruck' => true, 'heroFollowTruck' => true],
+                'mobile' => ['worldZoom' => 2, 'heroZoom' => 2, 'worldFollowTruck' => true, 'heroFollowTruck' => true],
+            ],
+            'overlayPlacement' => [
+                'routePanel' => 'left',
+                'telemetryWidgets' => 'right',
+                'mapJobOverlay' => 'left',
+            ],
+            'mobileTuning' => [
+                'compactWidgets' => true,
+                'hideMapShortcuts' => true,
+                'preferBottomToolbar' => true,
+            ],
         ],
         'routePlanner' => [
             'averageKph' => 63,

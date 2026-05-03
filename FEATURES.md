@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project provides a browser-based Euro Truck Simulator 2 dashboard built with PHP, JavaScript, and CSS. It focuses on fast live telemetry, a polished driving HUD, map tracking, remote player overlays, and a browser-managed configuration flow.
+This project provides browser-based Euro Truck Simulator 2 and American Truck Simulator dashboards built with PHP, JavaScript, and CSS. It focuses on fast live telemetry, a polished driving HUD, map tracking, remote player overlays, and a browser-managed configuration flow.
 
 ## Core Dashboard
 
@@ -16,11 +16,13 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 - Inline dashboard notice cards for telemetry failures, cached fallback mode, and map or tile issues
 - In-app `Help` overlay with dashboard guidance, shortcuts, and troubleshooting notes
 - Route summary with source and destination, distance, ETA, real-time ETA, and fuel range
+- Toggleable telemetry insight widgets with route progress, fuel-use sparkline, and engine RPM load
 - New-job popup centered on the hero map with cargo, route, income, distance, weight, and deadline details
 - Delivery-complete popup with income, XP, distance, and parking result
 - Live event popup logic that only shows job-start and delivery-finished popups on real telemetry transitions, not on page refresh
 - Main-toolbar `TruckersMP` toggle for area-player visibility
 - Other-player overlays sourced from both TruckersMP and direct telemetry URLs
+- ATS dashboard variant at `/ats` with ATS telemetry, map sources, cache, snapshots, and info workspace wiring
 
 ## Telemetry Behavior
 
@@ -28,6 +30,7 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 - Player polling defaults aligned to `250ms`
 - Telemetry values rendered directly in km/h where provided by the source
 - Configurable upstream telemetry endpoint
+- Separate ATS upstream, cache, snapshot, and frontend endpoint settings
 - Request timeout handling for stalled telemetry requests
 - Cached telemetry fallback when upstream data is unavailable
 - Source-aware connection state reporting for live, cached, and failed updates
@@ -50,6 +53,7 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 - Configurable world bounds for truck positioning
 - Tile-source discovery from configurable base URLs and config names
 - Named map selection shared between the hero map and world map, including `Standard` and `ProMods`
+- ATS-specific map source support with fallback to shared map configuration when needed
 - Automatic fallback-bound switching based on the selected map (`Standard` or `ProMods`)
 - Saved browser preference for the selected map source, including `Standard` and `ProMods`
 - Separate saved zoom and follow-truck browser preferences for each map source, including `Standard` and `ProMods`
@@ -80,10 +84,13 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 - Inline import feedback for upload failures, invalid JSON, and missing managed config sections
 - Visual settings for shared UI typography, hero-map player labels, and surface styling
 - Frontend player settings for refresh interval, search radius, and default server
+- Frontend layout settings for per-device map defaults, overlay placement, and mobile dashboard tuning
 - Snapshot naming controls for prefix, timestamp format, and filename pattern
+- Snapshot management UI for ETS2 and ATS archive counts, sizes, downloads, per-file deletion, bulk cleanup, pruning, and runtime state resets
 - Support for named frontend map sources such as `Standard` and `ProMods` in addition to legacy single-source tile configuration
 - Local override support layered on top of defaults from `config.php`
 - Environment-variable overrides for runtime-sensitive telemetry and snapshot settings
+- Shared PHP helpers for escaping, frontend JSON bootstrapping, and config array fallbacks across dashboard entry points
 
 ## Snapshot And Cache Pipeline
 
@@ -115,6 +122,7 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 ## Project Files
 
 - `indexV2.php`: main dashboard
+- `indexV2Ats.php`: American Truck Simulator dashboard
 - `indexV2.css`: main dashboard styling
 - `index.js`: frontend telemetry rendering, map logic, and interactivity
 - `infos.php`: extended telemetry workspace
@@ -123,6 +131,7 @@ This project provides a browser-based Euro Truck Simulator 2 dashboard built wit
 - `settings.css`: styling for the settings workspace
 - `settings.js`: settings workspace tab behavior
 - `telemetry.php`: telemetry fetch, cache, snapshot, and remote-player pipeline
+- `telemetryAts.php`: ATS telemetry fetch, cache, and snapshot pipeline
 - `tile-proxy.php`: optional tile proxy
 - `router.php`: built-in server router
 - `run.bat`: Windows launcher

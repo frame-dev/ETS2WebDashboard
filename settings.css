@@ -336,6 +336,7 @@ p {
 
 input[type="number"],
 input[type="text"],
+select,
 textarea {
     width: 100%;
     min-height: 48px;
@@ -349,6 +350,15 @@ textarea {
 textarea {
     min-height: 110px;
     resize: vertical;
+}
+
+select {
+    appearance: none;
+    background:
+        linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 18px) 50% / 6px 6px no-repeat,
+        linear-gradient(135deg, var(--muted) 50%, transparent 50%) calc(100% - 12px) 50% / 6px 6px no-repeat,
+        rgba(2, 8, 14, 0.5);
+    padding-right: 34px;
 }
 
 input::placeholder,
@@ -384,6 +394,46 @@ textarea::placeholder {
     font-size: 0.84rem;
     line-height: 1.45;
     overflow-wrap: anywhere;
+}
+
+.device-defaults {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.device-default-card {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+    border-radius: var(--panel-radius-md);
+    border: 1px solid rgba(150, 205, 240, 0.12);
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.device-default-card strong {
+    color: var(--strong);
+}
+
+.device-default-card label {
+    display: grid;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.device-default-card input[type="number"] {
+    min-height: 40px;
+    padding: 8px 10px;
+}
+
+.inline-check {
+    grid-template-columns: auto 1fr;
+    align-items: center;
+}
+
+.inline-check input {
+    accent-color: var(--teal);
 }
 
 .switch {
@@ -492,6 +542,18 @@ textarea::placeholder {
     border-color: rgba(84, 239, 199, 0.3);
 }
 
+.button-secondary.danger {
+    border-color: rgba(255, 122, 102, 0.26);
+    color: #ffd6cf;
+}
+
+.button-secondary.danger:hover {
+    border-color: rgba(255, 122, 102, 0.5);
+    background:
+        linear-gradient(180deg, rgba(255, 122, 102, 0.14), rgba(255, 255, 255, 0.02)),
+        rgba(255, 255, 255, 0.04);
+}
+
 .badge {
     display: inline-flex;
     align-items: center;
@@ -569,20 +631,66 @@ pre {
     gap: 12px;
 }
 
+.snapshot-manager {
+    display: grid;
+    gap: 12px;
+}
+
+.snapshot-source {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 0.48fr) auto;
+    gap: 14px;
+    align-items: center;
+    padding: 16px;
+    border-radius: var(--panel-radius-md);
+    border: 1px solid rgba(150, 205, 240, 0.12);
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.snapshot-source strong {
+    display: block;
+    color: var(--strong);
+    margin-bottom: 4px;
+}
+
+.snapshot-source-metrics {
+    display: grid;
+    gap: 5px;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.snapshot-actions {
+    margin-top: 14px;
+}
+
 .file {
     position: relative;
     border-radius: 20px;
     padding: 16px 18px;
-    display: grid;
-    gap: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
     box-shadow:
         0 14px 34px rgba(0, 0, 0, 0.18),
         var(--glass-shadow);
 }
 
+.file-main {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+}
+
 .file strong {
     color: var(--strong);
     overflow-wrap: anywhere;
+}
+
+.file-actions {
+    justify-content: flex-end;
+    flex: 0 0 auto;
 }
 
 .meta {
@@ -608,6 +716,7 @@ code {
 input[type="number"],
 input[type="text"],
 input[type="file"],
+select,
 textarea,
 .back,
 .button-secondary,
@@ -627,6 +736,7 @@ pre,
 input[type="number"],
 input[type="text"],
 input[type="file"],
+select,
 textarea {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
@@ -657,7 +767,8 @@ input[type="file"]::file-selector-button {
     }
 
     .stats,
-    .form-grid {
+    .form-grid,
+    .device-defaults {
         grid-template-columns: 1fr 1fr;
     }
 }
@@ -684,7 +795,8 @@ input[type="file"]::file-selector-button {
     }
 
     .stats,
-    .form-grid {
+    .form-grid,
+    .device-defaults {
         grid-template-columns: 1fr;
     }
 
@@ -703,8 +815,24 @@ input[type="file"]::file-selector-button {
     .panel-spaced,
     .runtime,
     .files,
+    .snapshot-source,
     .file {
         min-width: 0;
+    }
+
+    .snapshot-source,
+    .file {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .file {
+        flex-direction: column;
+    }
+
+    .file-actions {
+        width: 100%;
+        justify-content: stretch;
     }
 
     .toggle-card {

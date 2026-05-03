@@ -11,6 +11,11 @@ function dashboard_config_defaults(): array
             'heroEyebrow' => 'Euro Truck Simulator 2',
             'heroTitle' => 'Command dashboard online',
             'heroSummary' => 'Preparing a live operator view from your local telemetry feed.',
+            'atsPageTitle' => 'ATS Command Dashboard',
+            'atsMetaDescription' => 'Live ATS dashboard for telemetry, route status, systems, and map tracking.',
+            'atsHeroEyebrow' => 'American Truck Simulator',
+            'atsHeroTitle' => 'ATS command dashboard online',
+            'atsHeroSummary' => 'Preparing a live American Truck Simulator operator view from your local telemetry feed.',
         ],
         'design' => [
             'accentColor' => '#54EFC7',
@@ -73,6 +78,7 @@ function dashboard_config_defaults(): array
             'storageKeys' => [
                 'activeTab' => 'ets2-dashboard-active-tab',
                 'mapPreferences' => 'ets2-dashboard-map-preferences',
+                'dashboardWidgets' => 'ets2-dashboard-widgets-visible',
             ],
             'routePlanner' => [
                 'averageKph' => 63,
@@ -83,6 +89,38 @@ function dashboard_config_defaults(): array
                 'worldFollowTruck' => true,
                 'heroZoom' => 3,
                 'heroFollowTruck' => true,
+            ],
+            'dashboardLayout' => [
+                'deviceMapDefaults' => [
+                    'desktop' => [
+                        'worldZoom' => 4,
+                        'heroZoom' => 3,
+                        'worldFollowTruck' => true,
+                        'heroFollowTruck' => true,
+                    ],
+                    'tablet' => [
+                        'worldZoom' => 3,
+                        'heroZoom' => 2,
+                        'worldFollowTruck' => true,
+                        'heroFollowTruck' => true,
+                    ],
+                    'mobile' => [
+                        'worldZoom' => 2,
+                        'heroZoom' => 2,
+                        'worldFollowTruck' => true,
+                        'heroFollowTruck' => true,
+                    ],
+                ],
+                'overlayPlacement' => [
+                    'routePanel' => 'left',
+                    'telemetryWidgets' => 'right',
+                    'mapJobOverlay' => 'left',
+                ],
+                'mobileTuning' => [
+                    'compactWidgets' => true,
+                    'hideMapShortcuts' => true,
+                    'preferBottomToolbar' => true,
+                ],
             ],
             'mapBounds' => [
                 'minX' => -94118.3,
@@ -164,6 +202,40 @@ function dashboard_array_merge_recursive(array $base, array $overrides): array
     }
 
     return $base;
+}
+
+function dashboard_escape(mixed $value): string
+{
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+function dashboard_config_array(array $config, string $key): array
+{
+    return is_array($config[$key] ?? null) ? $config[$key] : [];
+}
+
+function dashboard_prefer_config_array(array $config, string $preferredKey, string $fallbackKey): array
+{
+    if (is_array($config[$preferredKey] ?? null)) {
+        return $config[$preferredKey];
+    }
+
+    return dashboard_config_array($config, $fallbackKey);
+}
+
+function dashboard_json_encode_for_html_script(mixed $value): string
+{
+    $encoded = json_encode(
+        $value,
+        JSON_UNESCAPED_SLASHES
+            | JSON_UNESCAPED_UNICODE
+            | JSON_HEX_TAG
+            | JSON_HEX_AMP
+            | JSON_HEX_APOS
+            | JSON_HEX_QUOT
+    );
+
+    return $encoded === false ? '{}' : $encoded;
 }
 
 function dashboard_env_bool(string $name, bool $default): bool

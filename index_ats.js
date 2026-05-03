@@ -31,21 +31,29 @@ const activeTabStorageKey = (config.storageKeys && config.storageKeys.activeTab)
 const mapPreferencesStorageKey = (config.storageKeys && config.storageKeys.mapPreferences) || "ats-dashboard-map-preferences";
 const jobHistoryStorageKey = (config.storageKeys && config.storageKeys.jobHistory) || "ets2-dashboard-job-history";
 const alertPreferencesStorageKey = (config.storageKeys && config.storageKeys.alertPreferences) || "ets2-dashboard-alert-preferences";
+const telemetryWidgetsStorageKey = (config.storageKeys && config.storageKeys.dashboardWidgets) || "ats-dashboard-widgets-visible";
 const tileProxyEndpoint = config.tileProxyEndpoint || "tile-proxy.php";
 const tabsRoot = document.querySelector(".section-tabs");
 const routePlannerAverageKph = Number(config.routePlanner?.averageKph) || 63;
 const routePlannerRealTimeScale = Number(config.routePlanner?.realTimeScale) || 17.5;
+const dashboardLayoutConfig = config.dashboardLayout || {};
 const mapDefaultsConfig = config.mapDefaults || {};
-const configuredWorldMapZoom = Number(mapDefaultsConfig.worldZoom);
+const activeDeviceProfile = getDashboardDeviceProfile();
+const activeDeviceMapDefaults = getDeviceMapDefaults(activeDeviceProfile);
+const configuredWorldMapZoom = Number(activeDeviceMapDefaults.worldZoom ?? mapDefaultsConfig.worldZoom);
 const defaultWorldMapZoom = Number.isFinite(configuredWorldMapZoom)
     ? Math.max(0, Math.floor(configuredWorldMapZoom))
     : 4;
-const defaultWorldMapFollowTruck = typeof mapDefaultsConfig.worldFollowTruck === "boolean" ? mapDefaultsConfig.worldFollowTruck : true;
-const configuredHeroMapZoom = Number(mapDefaultsConfig.heroZoom);
+const defaultWorldMapFollowTruck = typeof activeDeviceMapDefaults.worldFollowTruck === "boolean"
+    ? activeDeviceMapDefaults.worldFollowTruck
+    : (typeof mapDefaultsConfig.worldFollowTruck === "boolean" ? mapDefaultsConfig.worldFollowTruck : true);
+const configuredHeroMapZoom = Number(activeDeviceMapDefaults.heroZoom ?? mapDefaultsConfig.heroZoom);
 const defaultHeroMapZoom = Number.isFinite(configuredHeroMapZoom)
     ? Math.max(0, Math.floor(configuredHeroMapZoom))
     : 3;
-const defaultHeroMapFollowTruck = typeof mapDefaultsConfig.heroFollowTruck === "boolean" ? mapDefaultsConfig.heroFollowTruck : true;
+const defaultHeroMapFollowTruck = typeof activeDeviceMapDefaults.heroFollowTruck === "boolean"
+    ? activeDeviceMapDefaults.heroFollowTruck
+    : (typeof mapDefaultsConfig.heroFollowTruck === "boolean" ? mapDefaultsConfig.heroFollowTruck : true);
 const legacyMapBounds = {
     minX: Number(config.mapBounds?.minX) || -94118.3,
     maxX: Number(config.mapBounds?.maxX) || 128280,
@@ -216,6 +224,7 @@ const elements = {
     heroSummary: document.getElementById("hero-summary"),
     dashboardNotices: document.getElementById("dashboard-notices"),
     truckersMpToggle: document.getElementById("truckersmp-toggle"),
+    telemetryWidgetsToggle: document.getElementById("telemetry-widgets-toggle"),
     helpToggle: document.getElementById("help-toggle"),
     helpOverlay: document.getElementById("help-overlay"),
     helpDialog: document.getElementById("dashboard-help"),
@@ -251,6 +260,16 @@ const elements = {
     routeTime: document.getElementById("route-time"),
     routeRealTime: document.getElementById("route-real-time"),
     fuelRange: document.getElementById("fuel-range"),
+    telemetryWidgets: document.getElementById("telemetry-widgets"),
+    widgetRouteProgressValue: document.getElementById("widget-route-progress-value"),
+    widgetRouteProgressBar: document.getElementById("widget-route-progress-bar"),
+    widgetRouteProgressNote: document.getElementById("widget-route-progress-note"),
+    widgetFuelConsumptionValue: document.getElementById("widget-fuel-consumption-value"),
+    widgetFuelConsumptionNote: document.getElementById("widget-fuel-consumption-note"),
+    widgetFuelSparkline: document.getElementById("widget-fuel-sparkline"),
+    widgetEngineLoadValue: document.getElementById("widget-engine-load-value"),
+    widgetEngineLoadBar: document.getElementById("widget-engine-load-bar"),
+    widgetEngineLoadNote: document.getElementById("widget-engine-load-note"),
     heroMap: document.getElementById("hero-map"),
     heroMapStage: document.getElementById("hero-map-stage"),
     heroMapTiles: document.getElementById("hero-map-tiles"),
@@ -337,6 +356,49 @@ const cityLocalizationState = {
     localeCandidates: buildLocaleCandidates(systemLocale),
 };
 
+function getDashboardDeviceProfile() {
+    if (typeof window === "undefined") {
+        return "desktop";
+    }
+
+    const width = Number(window.innerWidth) || 1200;
+    if (width <= 760) {
+        return "mobile";
+    }
+
+    if (width <= 1100) {
+        return "tablet";
+    }
+
+    return "desktop";
+}
+
+function getDeviceMapDefaults(profile) {
+    const profiles = dashboardLayoutConfig.deviceMapDefaults || {};
+    const profileDefaults = profiles[profile] || {};
+    return profileDefaults && typeof profileDefaults === "object" ? profileDefaults : {};
+}
+
+function normalizePlacement(value, fallback) {
+    return ["left", "right"].includes(value) ? value : fallback;
+}
+
+function applyDashboardLayoutPreferences() {
+    if (!document.body) {
+        return;
+    }
+
+    const placement = dashboardLayoutConfig.overlayPlacement || {};
+    const mobileTuning = dashboardLayoutConfig.mobileTuning || {};
+    document.body.dataset.deviceProfile = activeDeviceProfile;
+    document.body.dataset.routePanelPlacement = normalizePlacement(placement.routePanel, "left");
+    document.body.dataset.telemetryWidgetsPlacement = normalizePlacement(placement.telemetryWidgets, "right");
+    document.body.dataset.mapJobOverlayPlacement = normalizePlacement(placement.mapJobOverlay, "left");
+    document.body.dataset.mobileCompactWidgets = mobileTuning.compactWidgets === false ? "false" : "true";
+    document.body.dataset.mobileHideMapShortcuts = mobileTuning.hideMapShortcuts === false ? "false" : "true";
+    document.body.dataset.mobileBottomToolbar = mobileTuning.preferBottomToolbar === false ? "false" : "true";
+}
+
 let refreshTimer = null;
 let tileMapRetryTimer = null;
 let latestTelemetryData = null;
@@ -359,6 +421,8 @@ let playersData = [];
 let remoteTelemetryPlayers = [];
 let playersOverlayEnabled = true;
 let remoteTelemetryEnabled = true;
+let telemetryWidgetsVisible = true;
+const fuelConsumptionSamples = [];
 let remoteTelemetryUrls = Array.isArray(config.remoteTelemetryUrls)
     ? normalizeRemoteTelemetryUrls(config.remoteTelemetryUrls.join(", "))
     : [];
@@ -1569,6 +1633,50 @@ function updateTruckersMpToggle() {
     elements.truckersMpToggle.title = playersOverlayEnabled
         ? "Hide other TruckersMP players"
         : "Show other TruckersMP players";
+}
+
+function updateTelemetryWidgetsVisibility() {
+    if (elements.telemetryWidgets) {
+        elements.telemetryWidgets.hidden = !telemetryWidgetsVisible;
+    }
+
+    if (elements.telemetryWidgetsToggle instanceof HTMLButtonElement) {
+        elements.telemetryWidgetsToggle.textContent = telemetryWidgetsVisible ? "Widgets On" : "Widgets Off";
+        elements.telemetryWidgetsToggle.dataset.state = telemetryWidgetsVisible ? "active" : "inactive";
+        elements.telemetryWidgetsToggle.setAttribute("aria-pressed", telemetryWidgetsVisible ? "true" : "false");
+        elements.telemetryWidgetsToggle.setAttribute(
+            "aria-label",
+            telemetryWidgetsVisible ? "Hide telemetry insight widgets" : "Show telemetry insight widgets"
+        );
+    }
+}
+
+function setTelemetryWidgetsVisible(visible, persist = true) {
+    telemetryWidgetsVisible = Boolean(visible);
+    updateTelemetryWidgetsVisibility();
+
+    if (!persist) {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(telemetryWidgetsStorageKey, telemetryWidgetsVisible ? "1" : "0");
+    } catch (error) {
+        // Keep the in-memory toggle working when storage is unavailable.
+    }
+}
+
+function loadTelemetryWidgetsPreference() {
+    try {
+        const stored = window.localStorage.getItem(telemetryWidgetsStorageKey);
+        if (stored !== null) {
+            telemetryWidgetsVisible = stored !== "0" && stored !== "false";
+        }
+    } catch (error) {
+        // Default to visible when browser storage cannot be read.
+    }
+
+    updateTelemetryWidgetsVisibility();
 }
 
 function normalizeRemoteTelemetryUrls(value) {
@@ -3484,6 +3592,96 @@ function renderMetrics(data) {
 
 }
 
+function renderFuelConsumptionSparkline() {
+    if (!elements.widgetFuelSparkline) {
+        return;
+    }
+
+    const values = fuelConsumptionSamples.slice(-16);
+    const maxValue = Math.max(0.01, ...values);
+    const bars = Array.from({ length: 16 }, (_, index) => {
+        const value = values[index - (16 - values.length)] ?? 0;
+        const height = Math.max(12, Math.round((value / maxValue) * 100));
+        return `<span style="height:${height}%"></span>`;
+    });
+
+    elements.widgetFuelSparkline.innerHTML = bars.join("");
+}
+
+function renderTelemetryWidgets(data) {
+    const truck = data.truck || {};
+    const job = data.job || {};
+    const navigation = data.navigation || {};
+    const gameplay = data.gameplay || {};
+    const hasJob = Boolean(gameplay.onJob || job.sourceCity || job.destinationCity || job.cargo);
+    const plannedDistanceKm = getNumber(job.plannedDistanceKm);
+    const remainingDistanceKm = getNavigationDistanceKm(navigation);
+    const routeProgress = hasJob && plannedDistanceKm !== null && plannedDistanceKm > 0 && remainingDistanceKm !== null
+        ? clamp01((plannedDistanceKm - remainingDistanceKm) / plannedDistanceKm)
+        : null;
+
+    if (elements.widgetRouteProgressValue) {
+        elements.widgetRouteProgressValue.textContent = routeProgress === null
+            ? "--"
+            : formatPercent(routeProgress, 0, true);
+    }
+
+    if (elements.widgetRouteProgressBar) {
+        elements.widgetRouteProgressBar.style.width = `${Math.round((routeProgress ?? 0) * 100)}%`;
+    }
+
+    if (elements.widgetRouteProgressNote) {
+        elements.widgetRouteProgressNote.textContent = routeProgress === null
+            ? "No active route"
+            : `${formatDistanceKm(remainingDistanceKm)} of ${formatDistanceKm(plannedDistanceKm)} left`;
+    }
+
+    const fuelAverageConsumption = getNumber(truck.fuelAverageConsumption);
+    if (fuelAverageConsumption !== null) {
+        fuelConsumptionSamples.push(Math.max(0, fuelAverageConsumption));
+        if (fuelConsumptionSamples.length > 16) {
+            fuelConsumptionSamples.splice(0, fuelConsumptionSamples.length - 16);
+        }
+    }
+
+    if (elements.widgetFuelConsumptionValue) {
+        elements.widgetFuelConsumptionValue.textContent = fuelAverageConsumption === null
+            ? "--"
+            : `${formatNumber(fuelAverageConsumption, 2)} L/km`;
+    }
+
+    if (elements.widgetFuelConsumptionNote) {
+        const fuelRangeText = formatDistanceKm(truck.fuelRange);
+        elements.widgetFuelConsumptionNote.textContent = fuelAverageConsumption === null
+            ? "Waiting for telemetry"
+            : `${fuelRangeText === "--" ? "-- km" : fuelRangeText} estimated range`;
+    }
+
+    renderFuelConsumptionSparkline();
+
+    const engineRpm = getNumber(truck.engineRpm);
+    const engineRpmMax = getNumber(truck.engineRpmMax);
+    const engineLoad = engineRpm !== null && engineRpmMax !== null && engineRpmMax > 0
+        ? clamp01(engineRpm / engineRpmMax)
+        : null;
+
+    if (elements.widgetEngineLoadValue) {
+        elements.widgetEngineLoadValue.textContent = engineLoad === null
+            ? "--"
+            : formatPercent(engineLoad, 0, true);
+    }
+
+    if (elements.widgetEngineLoadBar) {
+        elements.widgetEngineLoadBar.style.width = `${Math.round((engineLoad ?? 0) * 100)}%`;
+    }
+
+    if (elements.widgetEngineLoadNote) {
+        elements.widgetEngineLoadNote.textContent = engineLoad === null
+            ? "RPM unavailable"
+            : `${formatRpm(engineRpm)} of ${formatRpm(engineRpmMax)} • Gear ${formatGear(truck)}`;
+    }
+}
+
 function renderRoute(data) {
     const job = data.job || {};
     const navigation = data.navigation || {};
@@ -4238,6 +4436,7 @@ function renderTelemetry(payload) {
     renderJobFinishedPopup(data);
     renderMetrics(data);
     renderRoute(data);
+    renderTelemetryWidgets(data);
     renderTruckProfile(data);
     renderSystems(data);
     renderDrivetrain(data);
@@ -4518,6 +4717,12 @@ if (elements.truckersMpToggle) {
     });
 }
 
+if (elements.telemetryWidgetsToggle) {
+    bindMapControlPress(elements.telemetryWidgetsToggle, () => {
+        setTelemetryWidgetsVisible(!telemetryWidgetsVisible);
+    });
+}
+
 if (elements.remoteTelemetryToggle) {
     bindMapControlPress(elements.remoteTelemetryToggle, () => {
         setRemoteTelemetryEnabled(!remoteTelemetryEnabled);
@@ -4622,7 +4827,9 @@ try {
     setActiveTab("overview");
 }
 
+applyDashboardLayoutPreferences();
 loadMapPreferences();
+loadTelemetryWidgetsPreference();
 loadAlertPreferences();
 loadJobHistory();
 syncMapSourceControls();

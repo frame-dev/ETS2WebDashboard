@@ -47,6 +47,20 @@
         });
     });
 
+    document.addEventListener("click", (event) => {
+        const action = event.target instanceof Element
+            ? event.target.closest("[data-confirm]")
+            : null;
+        if (!(action instanceof HTMLElement)) {
+            return;
+        }
+
+        const message = action.dataset.confirm || "Continue with this action?";
+        if (!window.confirm(message)) {
+            event.preventDefault();
+        }
+    });
+
     let initialTab = window.location.hash.replace(/^#/, "");
 
     if (!tabs.some((tab) => tab.dataset.settingsTab === initialTab)) {

@@ -7,12 +7,13 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes t
 ## Roadmap
 
 - [x] Add an American Truck Simulator landing page and backend telemetry endpoint
-- [ ] Turn the American Truck Simulator page into a full live dashboard
+- [x] Turn the American Truck Simulator page into a full live dashboard
+- [ ] Continue refining shared ETS2/ATS configuration and map workflows
 
 ## What This Project Includes
 
 - `indexV2.php`: the main live dashboard
-- `indexV2Ats.php`: an American Truck Simulator project page, available at `/ats`
+- `indexV2Ats.php`: the American Truck Simulator live dashboard, available at `/ats`
 - `infos.php`: a secondary information workspace with deeper telemetry sections and direct remote-player URL controls
 - `settings.php`: a browser-based configuration editor for `config.local.php`
 - `telemetry.php`: the PHP telemetry fetch, cache, snapshot, and remote-player pipeline
@@ -26,6 +27,7 @@ The main panel is `indexV2.php`. The built-in PHP router (`router.php`) routes t
 - Live ETS2 telemetry polling from a configurable upstream endpoint
 - Shared `250ms` defaults across telemetry refresh, player refresh, and frontend polling floors
 - Main dashboard with a large speed ring, direct km/h telemetry readouts, road-limit and tempomat pills, route distance, ETA, scaled real-time ETA, and fuel range
+- Toggleable dashboard insight widgets for route progress, fuel consumption trend, and engine load
 - Dashboard status widgets for connection state, last update time, and active refresh interval
 - Dashboard notice cards for telemetry failures, cached fallback mode, and map or tile-source issues
 - Built-in `Help` overlay with quick usage guidance, controls, shortcuts, and troubleshooting notes
@@ -86,7 +88,7 @@ Or use the included launcher scripts:
 5. Open `http://localhost:8000/`, `http://localhost:8000/ets2`, or `http://localhost:8000/indexV2.php` for the main dashboard.
 6. Open `http://localhost:8000/infos.php` for the extended telemetry workspace.
 7. Open `http://localhost:8000/settings.php` to manage configuration from the browser.
-8. Open `http://localhost:8000/ats` for the American Truck Simulator project page.
+8. Open `http://localhost:8000/ats` for the American Truck Simulator dashboard.
 
 ## Quality Checks
 
@@ -428,13 +430,12 @@ There is also a standalone `snapshot.js` script in the repository, but the main 
 
 ## Feature Roadmap
 
-- [ ] Make the tile server publicly available and test tile proxying with real external sources
+- [x] Make the tile server publicly available and test tile proxying with real external sources
 - [x] Add more Settings controls for frontend behavior, such as map default zoom level, snapshot naming patterns, map settings, and telemetry polling backoff tuning
-- [ ] Add more telemetry details to the info workspace, such as trailer states, control inputs, and event logs
-- [ ] Expand frontend settings further with per-device map defaults, overlay placement controls, and mobile-specific dashboard tuning
-- [ ] Implement a more robust snapshot management UI and workflow
+- [x] Expand frontend settings further with per-device map defaults, overlay placement controls, and mobile-specific dashboard tuning
+- [x] Implement a more robust snapshot management UI and workflow
 - [x] Add error handling and user feedback for telemetry fetch failures, invalid config imports, and tile proxy errors
-- [ ] Explore additional dashboard widgets or visualizations based on telemetry data, such as fuel consumption graphs, engine load indicators, or route progress bars
+- [x] Explore additional dashboard widgets or visualizations based on telemetry data, such as fuel consumption graphs, engine load indicators, or route progress bars
 
 ## Notes
 

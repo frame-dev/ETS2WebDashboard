@@ -66,9 +66,10 @@ $dashboard_theme_css = ':root{' . implode(';', $dashboard_theme_declarations) . 
 
 $refresh_interval_ms = (int) get_ats_telemetry_refresh_interval_ms();
 $frontend_config = is_array($app_config['frontend'] ?? null) ? $app_config['frontend'] : [];
-$storage_keys = is_array($frontend_config['storageKeys'] ?? null) ? $frontend_config['storageKeys'] : [];
-$ats_storage_keys = is_array($frontend_config['atsStorageKeys'] ?? null) ? $frontend_config['atsStorageKeys'] : [];
+$storage_keys = dashboard_config_array($frontend_config, 'storageKeys');
+$ats_storage_keys = dashboard_config_array($frontend_config, 'atsStorageKeys');
 $storage_keys['mapPreferences'] = (string) ($ats_storage_keys['mapPreferences'] ?? 'ats-dashboard-map-preferences');
+$storage_keys['dashboardWidgets'] = (string) ($ats_storage_keys['dashboardWidgets'] ?? 'ats-dashboard-widgets-visible');
 $job_finished_details = ats_index_get_job_delivered_details($json_data);
 $job_finished_details = is_array($job_finished_details) ? $job_finished_details : [];
 $job_finished_cargo = trim((string) ats_index_get_job_cargo($json_data));
@@ -99,28 +100,24 @@ $dashboard_config = [
     'tileProxyEndpoint' => 'tile-proxy.php',
     'refreshIntervalMs' => $refresh_interval_ms,
     'telemetryRequestTimeoutMs' => (int) dashboard_config_value('telemetry.requestTimeoutMs', 4500),
-    'remoteTelemetryUrls' => is_array($frontend_config['remoteTelemetryUrls'] ?? null) ? $frontend_config['remoteTelemetryUrls'] : [],
+    'remoteTelemetryUrls' => dashboard_config_array($frontend_config, 'remoteTelemetryUrls'),
     'playersRefreshMs' => (int) (($frontend_config['playersRefreshMs'] ?? null) ?? (($frontend_config['players']['refreshMs'] ?? null) ?? 250)),
     'playersRadiusDefault' => (int) (($frontend_config['playersRadiusDefault'] ?? null) ?? (($frontend_config['players']['radiusDefault'] ?? null) ?? 5500)),
     'playersServerDefault' => (int) (($frontend_config['playersServerDefault'] ?? null) ?? (($frontend_config['players']['serverDefault'] ?? null) ?? 50)),
-    'telemetryPolling' => is_array($frontend_config['telemetryPolling'] ?? null) ? $frontend_config['telemetryPolling'] : [],
-    'speedRing' => is_array($frontend_config['speedRing'] ?? null) ? $frontend_config['speedRing'] : [],
-    'popupEvents' => is_array($frontend_config['popupEvents'] ?? null) ? $frontend_config['popupEvents'] : [],
+    'telemetryPolling' => dashboard_config_array($frontend_config, 'telemetryPolling'),
+    'speedRing' => dashboard_config_array($frontend_config, 'speedRing'),
+    'popupEvents' => dashboard_config_array($frontend_config, 'popupEvents'),
     'storageKeys' => $storage_keys,
-    'routePlanner' => is_array($frontend_config['routePlanner'] ?? null) ? $frontend_config['routePlanner'] : [],
-    'mapDefaults' => is_array($frontend_config['mapDefaults'] ?? null) ? $frontend_config['mapDefaults'] : [],
-    'mapBounds' => is_array($frontend_config['atsMapBounds'] ?? null) ? $frontend_config['atsMapBounds'] : (is_array($frontend_config['mapBounds'] ?? null) ? $frontend_config['mapBounds'] : []),
-    'mapTiles' => is_array($frontend_config['atsMapTiles'] ?? null) ? $frontend_config['atsMapTiles'] : (is_array($frontend_config['mapTiles'] ?? null) ? $frontend_config['mapTiles'] : []),
-    'mapSources' => is_array($frontend_config['atsMapSources'] ?? null) ? $frontend_config['atsMapSources'] : (is_array($frontend_config['mapSources'] ?? null) ? $frontend_config['mapSources'] : []),
+    'routePlanner' => dashboard_config_array($frontend_config, 'routePlanner'),
+    'dashboardLayout' => dashboard_config_array($frontend_config, 'dashboardLayout'),
+    'mapDefaults' => dashboard_config_array($frontend_config, 'mapDefaults'),
+    'mapBounds' => dashboard_prefer_config_array($frontend_config, 'atsMapBounds', 'mapBounds'),
+    'mapTiles' => dashboard_prefer_config_array($frontend_config, 'atsMapTiles', 'mapTiles'),
+    'mapSources' => dashboard_prefer_config_array($frontend_config, 'atsMapSources', 'mapSources'),
     'initialPayload' => $initial_payload,
 ];
 
-$json_flags = JSON_UNESCAPED_SLASHES
-    | JSON_UNESCAPED_UNICODE
-    | JSON_HEX_TAG
-    | JSON_HEX_AMP
-    | JSON_HEX_APOS
-    | JSON_HEX_QUOT;
+$encoded_dashboard_config = dashboard_json_encode_for_html_script($dashboard_config);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -128,8 +125,9 @@ $json_flags = JSON_UNESCAPED_SLASHES
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="<?php echo htmlspecialchars($app_description, ENT_QUOTES, 'UTF-8'); ?>">
-    <title><?php echo htmlspecialchars($app_title, ENT_QUOTES, 'UTF-8'); ?></title>
+    <meta name="description" content="<?php echo dashboard_escape($app_description); ?>">
+    <meta name="theme-color" content="<?php echo dashboard_escape($design_config['accentColor']); ?>">
+    <title><?php echo dashboard_escape($app_title); ?></title>
     <link rel="stylesheet" href="indexAts.css">
     <style>
         <?php echo $dashboard_theme_css; ?>
@@ -137,8 +135,6 @@ $json_flags = JSON_UNESCAPED_SLASHES
 </head>
 
 <body>
-    <?php
-    ?>
     <noscript>
         <p>This dashboard requires JavaScript to render live telemetry and map updates.</p>
     </noscript>
@@ -161,6 +157,9 @@ $json_flags = JSON_UNESCAPED_SLASHES
             <button class="toolbar-toggle-button" type="button" id="truckersmp-toggle" aria-pressed="true" aria-label="Toggle TruckersMP player markers">
                 TruckersMP
             </button>
+            <button class="toolbar-toggle-button" type="button" id="telemetry-widgets-toggle" aria-pressed="true" aria-label="Toggle telemetry insight widgets">
+                Widgets
+            </button>
             <button class="help-link" type="button" id="help-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="dashboard-help">
                 <span class="help-link-icon" aria-hidden="true">?</span>
                 <span class="help-link-copy">
@@ -177,9 +176,9 @@ $json_flags = JSON_UNESCAPED_SLASHES
         </div>
         <section class="hero-panel">
             <div class="hero-copy">
-                <p class="eyebrow"><?php echo htmlspecialchars($hero_eyebrow, ENT_QUOTES, 'UTF-8'); ?></p>
-                <h1 id="hero-title"><?php echo htmlspecialchars($hero_title, ENT_QUOTES, 'UTF-8'); ?></h1>
-                <p class="hero-summary" id="hero-summary"><?php echo htmlspecialchars($hero_summary, ENT_QUOTES, 'UTF-8'); ?></p>
+                <p class="eyebrow"><?php echo dashboard_escape($hero_eyebrow); ?></p>
+                <h1 id="hero-title"><?php echo dashboard_escape($hero_title); ?></h1>
+                <p class="hero-summary" id="hero-summary"><?php echo dashboard_escape($hero_summary); ?></p>
                 <div class="dashboard-notices" id="dashboard-notices" hidden aria-live="polite"></div>
             </div>
 
@@ -219,6 +218,36 @@ $json_flags = JSON_UNESCAPED_SLASHES
                 <span class="route-time" id="route-time">ETA --:--</span>
                 <span class="route-real-time" id="route-real-time">REAL --:--</span>
             </div>
+            <div class="telemetry-widgets" id="telemetry-widgets" aria-label="Telemetry insight widgets">
+                <article class="telemetry-widget telemetry-widget-progress">
+                    <div class="telemetry-widget-head">
+                        <span>Route progress</span>
+                        <strong id="widget-route-progress-value">--</strong>
+                    </div>
+                    <div class="telemetry-widget-bar" aria-hidden="true">
+                        <span id="widget-route-progress-bar"></span>
+                    </div>
+                    <small id="widget-route-progress-note">No active route</small>
+                </article>
+                <article class="telemetry-widget">
+                    <div class="telemetry-widget-head">
+                        <span>Fuel use</span>
+                        <strong id="widget-fuel-consumption-value">--</strong>
+                    </div>
+                    <div class="telemetry-sparkline" id="widget-fuel-sparkline" aria-hidden="true"></div>
+                    <small id="widget-fuel-consumption-note">Waiting for telemetry</small>
+                </article>
+                <article class="telemetry-widget">
+                    <div class="telemetry-widget-head">
+                        <span>Engine load</span>
+                        <strong id="widget-engine-load-value">--</strong>
+                    </div>
+                    <div class="telemetry-widget-bar engine" aria-hidden="true">
+                        <span id="widget-engine-load-bar"></span>
+                    </div>
+                    <small id="widget-engine-load-note">RPM unavailable</small>
+                </article>
+            </div>
             <div class="hero-map" id="hero-map">
                 <div class="hero-map-stage" id="hero-map-stage" tabindex="0" aria-label="Hero map, use plus or minus to zoom and C to center">
                     <div class="hero-map-tiles" id="hero-map-tiles"></div>
@@ -248,13 +277,13 @@ $json_flags = JSON_UNESCAPED_SLASHES
                     aria-live="polite"
                     aria-hidden="true">
                     <span class="job-finished-popup-badge" id="job-finished-popup-badge">Delivery complete</span>
-                    <strong class="job-finished-popup-title" id="job-finished-popup-title"><?php echo htmlspecialchars($job_finished_title, ENT_QUOTES, 'UTF-8'); ?></strong>
-                    <span class="job-finished-popup-meta" id="job-finished-popup-meta"><?php echo htmlspecialchars($job_finished_meta, ENT_QUOTES, 'UTF-8'); ?></span>
+                    <strong class="job-finished-popup-title" id="job-finished-popup-title"><?php echo dashboard_escape($job_finished_title); ?></strong>
+                    <span class="job-finished-popup-meta" id="job-finished-popup-meta"><?php echo dashboard_escape($job_finished_meta); ?></span>
                     <div class="job-finished-popup-stats">
-                        <span class="job-finished-popup-stat" id="job-finished-popup-revenue"><?php echo htmlspecialchars($job_finished_revenue, ENT_QUOTES, 'UTF-8'); ?></span>
-                        <span class="job-finished-popup-stat" id="job-finished-popup-xp"><?php echo htmlspecialchars($job_finished_xp, ENT_QUOTES, 'UTF-8'); ?></span>
-                        <span class="job-finished-popup-stat" id="job-finished-popup-distance"><?php echo htmlspecialchars($job_finished_distance, ENT_QUOTES, 'UTF-8'); ?></span>
-                        <span class="job-finished-popup-stat" id="job-finished-popup-parking"><?php echo htmlspecialchars($job_finished_parking, ENT_QUOTES, 'UTF-8'); ?></span>
+                        <span class="job-finished-popup-stat" id="job-finished-popup-revenue"><?php echo dashboard_escape($job_finished_revenue); ?></span>
+                        <span class="job-finished-popup-stat" id="job-finished-popup-xp"><?php echo dashboard_escape($job_finished_xp); ?></span>
+                        <span class="job-finished-popup-stat" id="job-finished-popup-distance"><?php echo dashboard_escape($job_finished_distance); ?></span>
+                        <span class="job-finished-popup-stat" id="job-finished-popup-parking"><?php echo dashboard_escape($job_finished_parking); ?></span>
                     </div>
                 </div>
                 <div class="job-started-popup" id="job-started-popup" aria-live="polite" aria-hidden="true">
@@ -345,7 +374,7 @@ $json_flags = JSON_UNESCAPED_SLASHES
         </div>
     </main>
     <script>
-        window.dashboardConfig = <?php echo json_encode($dashboard_config, $json_flags); ?>;
+        window.dashboardConfig = <?php echo $encoded_dashboard_config; ?>;
     </script>
     <script src="index_ats.js" defer></script>
 </body>

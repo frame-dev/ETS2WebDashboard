@@ -141,6 +141,12 @@ function settings_normalize_color(mixed $value, string $fallback): string
     return dashboard_sanitize_hex_color($value, $fallback);
 }
 
+function settings_normalize_placement(mixed $value, string $fallback): string
+{
+    $normalized = is_string($value) ? strtolower(trim($value)) : '';
+    return in_array($normalized, ['left', 'right'], true) ? $normalized : $fallback;
+}
+
 function settings_build_theme_style(array $design): string
 {
     $variables = dashboard_design_theme_variables($design);
@@ -185,6 +191,171 @@ function settings_build_snapshot_filename_preview(array $snapshotConfig): string
     return $sanitized !== '' ? $sanitized : 'telemetry-2025-10-09T08-20-25-432Z.json';
 }
 
+function settings_path_is_inside(string $path, string $root): bool
+{
+    $normalizedPath = rtrim(str_replace('\\', '/', $path), '/');
+    $normalizedRoot = rtrim(str_replace('\\', '/', $root), '/');
+
+    return $normalizedPath === $normalizedRoot
+        || str_starts_with($normalizedPath, $normalizedRoot . '/');
+}
+
+function settings_snapshot_sources(array $snapshotConfig): array
+{
+    return [
+        'ets2' => [
+            'label' => 'ETS2',
+            'directory' => (string) ($snapshotConfig['directory'] ?? ''),
+            'stateFile' => (string) ($snapshotConfig['stateFile'] ?? ''),
+        ],
+        'ats' => [
+            'label' => 'ATS',
+            'directory' => (string) ($snapshotConfig['atsDirectory'] ?? ''),
+            'stateFile' => (string) ($snapshotConfig['atsStateFile'] ?? ''),
+        ],
+    ];
+}
+
+function settings_snapshot_token(string $scope, string $realPath): string
+{
+    return hash('sha256', $scope . '|' . str_replace('\\', '/', $realPath));
+}
+
+function settings_collect_snapshot_files(array $snapshotConfig): array
+{
+    $files = [];
+
+    foreach (settings_snapshot_sources($snapshotConfig) as $scope => $source) {
+        $directory = rtrim((string) $source['directory'], '/\\');
+        $realDirectory = $directory !== '' ? realpath($directory) : false;
+        if ($realDirectory === false || !is_dir($realDirectory)) {
+            continue;
+        }
+
+        $candidates = glob($realDirectory . DIRECTORY_SEPARATOR . '*.json') ?: [];
+        foreach ($candidates as $candidate) {
+            $realPath = realpath($candidate);
+            if ($realPath === false || !is_file($realPath) || !settings_path_is_inside($realPath, $realDirectory)) {
+                continue;
+            }
+
+            $files[] = [
+                'scope' => $scope,
+                'label' => (string) $source['label'],
+                'path' => $realPath,
+                'name' => basename($realPath),
+                'size' => (int) (filesize($realPath) ?: 0),
+                'mtime' => (int) (filemtime($realPath) ?: 0),
+                'token' => settings_snapshot_token($scope, $realPath),
+            ];
+        }
+    }
+
+    usort($files, static fn (array $a, array $b): int => ($b['mtime'] <=> $a['mtime']) ?: strcmp($a['name'], $b['name']));
+    return $files;
+}
+
+function settings_find_snapshot_file(array $snapshotFiles, string $token): ?array
+{
+    foreach ($snapshotFiles as $snapshotFile) {
+        if (hash_equals((string) $snapshotFile['token'], $token)) {
+            return $snapshotFile;
+        }
+    }
+
+    return null;
+}
+
+function settings_snapshot_scope_stats(array $snapshotFiles, string $scope): array
+{
+    $matching = array_values(array_filter(
+        $snapshotFiles,
+        static fn (array $snapshotFile): bool => $snapshotFile['scope'] === $scope
+    ));
+
+    return [
+        'count' => count($matching),
+        'bytes' => array_sum(array_map(static fn (array $snapshotFile): int => (int) $snapshotFile['size'], $matching)),
+        'latestMtime' => (int) ($matching[0]['mtime'] ?? 0),
+    ];
+}
+
+function settings_format_bytes(int $bytes): string
+{
+    if ($bytes < 1024) {
+        return $bytes . ' B';
+    }
+
+    $units = ['KB', 'MB', 'GB'];
+    $value = $bytes / 1024;
+    foreach ($units as $unit) {
+        if ($value < 1024 || $unit === 'GB') {
+            return rtrim(rtrim(number_format($value, 1, '.', ''), '0'), '.') . ' ' . $unit;
+        }
+
+        $value /= 1024;
+    }
+
+    return $bytes . ' B';
+}
+
+function settings_delete_snapshot_file(array $snapshotFile): bool
+{
+    return is_file($snapshotFile['path']) && @unlink($snapshotFile['path']);
+}
+
+function settings_delete_snapshot_scope(array $snapshotFiles, string $scope): int
+{
+    $deleted = 0;
+    foreach ($snapshotFiles as $snapshotFile) {
+        if (($scope === 'all' || $snapshotFile['scope'] === $scope) && settings_delete_snapshot_file($snapshotFile)) {
+            $deleted++;
+        }
+    }
+
+    return $deleted;
+}
+
+function settings_prune_snapshot_scope(array $snapshotFiles, string $scope, int $keep): int
+{
+    if ($scope === 'all') {
+        return settings_prune_snapshot_scope($snapshotFiles, 'ets2', $keep)
+            + settings_prune_snapshot_scope($snapshotFiles, 'ats', $keep);
+    }
+
+    $deleted = 0;
+    $kept = 0;
+    foreach ($snapshotFiles as $snapshotFile) {
+        if ($snapshotFile['scope'] !== $scope) {
+            continue;
+        }
+
+        $kept++;
+        if ($kept > $keep && settings_delete_snapshot_file($snapshotFile)) {
+            $deleted++;
+        }
+    }
+
+    return $deleted;
+}
+
+function settings_reset_snapshot_state(array $snapshotConfig, string $scope): int
+{
+    $deleted = 0;
+    foreach (settings_snapshot_sources($snapshotConfig) as $sourceScope => $source) {
+        if ($scope !== 'all' && $scope !== $sourceScope) {
+            continue;
+        }
+
+        $stateFile = (string) $source['stateFile'];
+        if ($stateFile !== '' && is_file($stateFile) && @unlink($stateFile)) {
+            $deleted++;
+        }
+    }
+
+    return $deleted;
+}
+
 function settings_build_managed_config(array $formData): array
 {
     return [
@@ -202,6 +373,7 @@ function settings_build_managed_config(array $formData): array
             'telemetryEndpoint' => $formData['frontend']['telemetryEndpoint'],
             'popupEvents' => $formData['frontend']['popupEvents'],
             'storageKeys' => $formData['frontend']['storageKeys'],
+            'dashboardLayout' => $formData['dashboardLayout'],
             'mapDefaults' => $formData['mapDefaults'],
             'mapBounds' => $formData['mapBounds'],
             'mapTiles' => $formData['frontend']['mapTiles'],
@@ -224,6 +396,7 @@ function settings_apply_managed_config(array $localConfig, array $managedConfig)
     $localConfig['frontend']['telemetryEndpoint'] = $managedConfig['frontend']['telemetryEndpoint'];
     $localConfig['frontend']['popupEvents'] = $managedConfig['frontend']['popupEvents'];
     $localConfig['frontend']['storageKeys'] = $managedConfig['frontend']['storageKeys'];
+    $localConfig['frontend']['dashboardLayout'] = $managedConfig['frontend']['dashboardLayout'];
     $localConfig['frontend']['mapDefaults'] = $managedConfig['frontend']['mapDefaults'];
     $localConfig['frontend']['mapBounds'] = $managedConfig['frontend']['mapBounds'];
     $localConfig['frontend']['mapTiles'] = $managedConfig['frontend']['mapTiles'];
@@ -294,6 +467,21 @@ function settings_import_json_to_form_data(array $currentFormData, array $import
     $currentFormData['frontend']['popupEvents']['showJobFinished'] = (bool) (($frontend['popupEvents']['showJobFinished'] ?? null) ?? $currentFormData['frontend']['popupEvents']['showJobFinished']);
     $currentFormData['frontend']['storageKeys']['activeTab'] = trim((string) (($frontend['storageKeys']['activeTab'] ?? null) ?? $currentFormData['frontend']['storageKeys']['activeTab']));
     $currentFormData['frontend']['storageKeys']['mapPreferences'] = trim((string) (($frontend['storageKeys']['mapPreferences'] ?? null) ?? $currentFormData['frontend']['storageKeys']['mapPreferences']));
+    $currentFormData['frontend']['storageKeys']['dashboardWidgets'] = trim((string) (($frontend['storageKeys']['dashboardWidgets'] ?? null) ?? $currentFormData['frontend']['storageKeys']['dashboardWidgets']));
+    $layout = is_array($frontend['dashboardLayout'] ?? null) ? $frontend['dashboardLayout'] : [];
+    foreach (['desktop', 'tablet', 'mobile'] as $profile) {
+        $profileDefaults = is_array($layout['deviceMapDefaults'][$profile] ?? null) ? $layout['deviceMapDefaults'][$profile] : [];
+        $currentFormData['dashboardLayout']['deviceMapDefaults'][$profile]['worldZoom'] = max(0, settings_int_value($profileDefaults['worldZoom'] ?? null, $currentFormData['dashboardLayout']['deviceMapDefaults'][$profile]['worldZoom']));
+        $currentFormData['dashboardLayout']['deviceMapDefaults'][$profile]['heroZoom'] = max(0, settings_int_value($profileDefaults['heroZoom'] ?? null, $currentFormData['dashboardLayout']['deviceMapDefaults'][$profile]['heroZoom']));
+        $currentFormData['dashboardLayout']['deviceMapDefaults'][$profile]['worldFollowTruck'] = (bool) ($profileDefaults['worldFollowTruck'] ?? $currentFormData['dashboardLayout']['deviceMapDefaults'][$profile]['worldFollowTruck']);
+        $currentFormData['dashboardLayout']['deviceMapDefaults'][$profile]['heroFollowTruck'] = (bool) ($profileDefaults['heroFollowTruck'] ?? $currentFormData['dashboardLayout']['deviceMapDefaults'][$profile]['heroFollowTruck']);
+    }
+    $currentFormData['dashboardLayout']['overlayPlacement']['routePanel'] = settings_normalize_placement($layout['overlayPlacement']['routePanel'] ?? null, $currentFormData['dashboardLayout']['overlayPlacement']['routePanel']);
+    $currentFormData['dashboardLayout']['overlayPlacement']['telemetryWidgets'] = settings_normalize_placement($layout['overlayPlacement']['telemetryWidgets'] ?? null, $currentFormData['dashboardLayout']['overlayPlacement']['telemetryWidgets']);
+    $currentFormData['dashboardLayout']['overlayPlacement']['mapJobOverlay'] = settings_normalize_placement($layout['overlayPlacement']['mapJobOverlay'] ?? null, $currentFormData['dashboardLayout']['overlayPlacement']['mapJobOverlay']);
+    $currentFormData['dashboardLayout']['mobileTuning']['compactWidgets'] = (bool) ($layout['mobileTuning']['compactWidgets'] ?? $currentFormData['dashboardLayout']['mobileTuning']['compactWidgets']);
+    $currentFormData['dashboardLayout']['mobileTuning']['hideMapShortcuts'] = (bool) ($layout['mobileTuning']['hideMapShortcuts'] ?? $currentFormData['dashboardLayout']['mobileTuning']['hideMapShortcuts']);
+    $currentFormData['dashboardLayout']['mobileTuning']['preferBottomToolbar'] = (bool) ($layout['mobileTuning']['preferBottomToolbar'] ?? $currentFormData['dashboardLayout']['mobileTuning']['preferBottomToolbar']);
     $currentFormData['mapDefaults']['worldZoom'] = max(0, settings_int_value($frontend['mapDefaults']['worldZoom'] ?? null, $currentFormData['mapDefaults']['worldZoom']));
     $currentFormData['mapDefaults']['heroZoom'] = max(0, settings_int_value($frontend['mapDefaults']['heroZoom'] ?? null, $currentFormData['mapDefaults']['heroZoom']));
     $currentFormData['mapDefaults']['worldFollowTruck'] = (bool) ($frontend['mapDefaults']['worldFollowTruck'] ?? $currentFormData['mapDefaults']['worldFollowTruck']);
@@ -391,6 +579,38 @@ $mapDefaultsConfig = [
     'heroZoom' => (int) dashboard_config_value('frontend.mapDefaults.heroZoom', 3),
     'heroFollowTruck' => (bool) dashboard_config_value('frontend.mapDefaults.heroFollowTruck', true),
 ];
+$dashboardLayoutConfig = [
+    'deviceMapDefaults' => [
+        'desktop' => [
+            'worldZoom' => (int) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.desktop.worldZoom', $mapDefaultsConfig['worldZoom']),
+            'heroZoom' => (int) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.desktop.heroZoom', $mapDefaultsConfig['heroZoom']),
+            'worldFollowTruck' => (bool) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.desktop.worldFollowTruck', $mapDefaultsConfig['worldFollowTruck']),
+            'heroFollowTruck' => (bool) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.desktop.heroFollowTruck', $mapDefaultsConfig['heroFollowTruck']),
+        ],
+        'tablet' => [
+            'worldZoom' => (int) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.tablet.worldZoom', max(0, $mapDefaultsConfig['worldZoom'] - 1)),
+            'heroZoom' => (int) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.tablet.heroZoom', max(0, $mapDefaultsConfig['heroZoom'] - 1)),
+            'worldFollowTruck' => (bool) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.tablet.worldFollowTruck', $mapDefaultsConfig['worldFollowTruck']),
+            'heroFollowTruck' => (bool) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.tablet.heroFollowTruck', $mapDefaultsConfig['heroFollowTruck']),
+        ],
+        'mobile' => [
+            'worldZoom' => (int) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.mobile.worldZoom', max(0, $mapDefaultsConfig['worldZoom'] - 2)),
+            'heroZoom' => (int) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.mobile.heroZoom', max(0, $mapDefaultsConfig['heroZoom'] - 1)),
+            'worldFollowTruck' => (bool) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.mobile.worldFollowTruck', $mapDefaultsConfig['worldFollowTruck']),
+            'heroFollowTruck' => (bool) dashboard_config_value('frontend.dashboardLayout.deviceMapDefaults.mobile.heroFollowTruck', $mapDefaultsConfig['heroFollowTruck']),
+        ],
+    ],
+    'overlayPlacement' => [
+        'routePanel' => settings_normalize_placement(dashboard_config_value('frontend.dashboardLayout.overlayPlacement.routePanel', 'left'), 'left'),
+        'telemetryWidgets' => settings_normalize_placement(dashboard_config_value('frontend.dashboardLayout.overlayPlacement.telemetryWidgets', 'right'), 'right'),
+        'mapJobOverlay' => settings_normalize_placement(dashboard_config_value('frontend.dashboardLayout.overlayPlacement.mapJobOverlay', 'left'), 'left'),
+    ],
+    'mobileTuning' => [
+        'compactWidgets' => (bool) dashboard_config_value('frontend.dashboardLayout.mobileTuning.compactWidgets', true),
+        'hideMapShortcuts' => (bool) dashboard_config_value('frontend.dashboardLayout.mobileTuning.hideMapShortcuts', true),
+        'preferBottomToolbar' => (bool) dashboard_config_value('frontend.dashboardLayout.mobileTuning.preferBottomToolbar', true),
+    ],
+];
 $mapBoundsConfig = [
     'minX' => (float) dashboard_config_value('frontend.mapBounds.minX', -94118.3),
     'maxX' => (float) dashboard_config_value('frontend.mapBounds.maxX', 128280),
@@ -406,6 +626,7 @@ $frontendConfig = [
     'storageKeys' => [
         'activeTab' => (string) dashboard_config_value('frontend.storageKeys.activeTab', 'ets2-dashboard-active-tab'),
         'mapPreferences' => (string) dashboard_config_value('frontend.storageKeys.mapPreferences', 'ets2-dashboard-map-preferences'),
+        'dashboardWidgets' => (string) dashboard_config_value('frontend.storageKeys.dashboardWidgets', 'ets2-dashboard-widgets-visible'),
     ],
     'mapTiles' => [
         'baseUrlCandidates' => settings_normalize_string_array(
@@ -429,6 +650,7 @@ $formData = [
     'speedRing' => $speedRingConfig,
     'players' => $playersConfig,
     'telemetryPolling' => $telemetryPollingConfig,
+    'dashboardLayout' => $dashboardLayoutConfig,
     'mapDefaults' => $mapDefaultsConfig,
     'mapBounds' => $mapBoundsConfig,
     'frontend' => $frontendConfig,
@@ -439,6 +661,24 @@ $errors = [];
 $importJsonInput = '';
 $importFeedback = null;
 $managedConfig = settings_build_managed_config($formData);
+$snapshotFiles = settings_collect_snapshot_files($formData['snapshots']);
+$snapshotSources = settings_snapshot_sources($formData['snapshots']);
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && isset($_GET['snapshot_download'])) {
+    $snapshotFile = settings_find_snapshot_file($snapshotFiles, (string) $_GET['snapshot_download']);
+    if ($snapshotFile === null) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Snapshot file not found.';
+        exit;
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . str_replace('"', '', (string) $snapshotFile['name']) . '"');
+    header('Content-Length: ' . (string) $snapshotFile['size']);
+    readfile((string) $snapshotFile['path']);
+    exit;
+}
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && isset($_GET['export'])) {
     $exportType = (string) $_GET['export'];
@@ -511,6 +751,58 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     }
 
+    if (str_starts_with($settingsAction, 'snapshot_')) {
+        $snapshotFileToken = (string) ($_POST['snapshot_file_token'] ?? '');
+        if (str_starts_with($settingsAction, 'snapshot_delete_file_')) {
+            $snapshotFileToken = substr($settingsAction, strlen('snapshot_delete_file_'));
+            $settingsAction = 'snapshot_delete_file';
+        }
+
+        $snapshotScope = 'all';
+        foreach (['ets2', 'ats', 'all'] as $candidateScope) {
+            if (str_ends_with($settingsAction, '_' . $candidateScope)) {
+                $snapshotScope = $candidateScope;
+                $settingsAction = substr($settingsAction, 0, -1 * (strlen($candidateScope) + 1));
+                break;
+            }
+        }
+
+        $snapshotScope = (string) ($_POST['snapshot_scope'] ?? $snapshotScope);
+        if (!in_array($snapshotScope, ['ets2', 'ats', 'all'], true)) {
+            $snapshotScope = 'all';
+        }
+
+        if ($settingsAction === 'snapshot_delete_file') {
+            $snapshotFile = settings_find_snapshot_file($snapshotFiles, $snapshotFileToken);
+            if ($snapshotFile === null) {
+                $errors[] = 'Snapshot file could not be found for deletion.';
+            } elseif (!settings_delete_snapshot_file($snapshotFile)) {
+                $errors[] = 'Snapshot file could not be deleted.';
+            } else {
+                header('Location: settings.php?snapshot=deleted');
+                exit;
+            }
+        }
+
+        if ($settingsAction === 'snapshot_prune') {
+            $deleted = settings_prune_snapshot_scope($snapshotFiles, $snapshotScope, 20);
+            header('Location: settings.php?snapshot=pruned&count=' . (string) $deleted);
+            exit;
+        }
+
+        if ($settingsAction === 'snapshot_delete_scope') {
+            $deleted = settings_delete_snapshot_scope($snapshotFiles, $snapshotScope);
+            header('Location: settings.php?snapshot=deleted_scope&count=' . (string) $deleted);
+            exit;
+        }
+
+        if ($settingsAction === 'snapshot_reset_state') {
+            $deleted = settings_reset_snapshot_state($formData['snapshots'], $snapshotScope);
+            header('Location: settings.php?snapshot=state_reset&count=' . (string) $deleted);
+            exit;
+        }
+    }
+
     if ($settingsAction === 'save') {
         $formData = [
             'app' => [
@@ -577,6 +869,38 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'minimumIntervalMs' => max(100, settings_int_value($_POST['telemetry_polling_minimum_interval_ms'] ?? null, $telemetryPollingConfig['minimumIntervalMs'])),
                 'cacheMultiplier' => max(1, settings_int_value($_POST['telemetry_polling_cache_multiplier'] ?? null, $telemetryPollingConfig['cacheMultiplier'])),
             ],
+            'dashboardLayout' => [
+                'deviceMapDefaults' => [
+                    'desktop' => [
+                        'worldZoom' => max(0, settings_int_value($_POST['layout_desktop_world_zoom'] ?? null, $dashboardLayoutConfig['deviceMapDefaults']['desktop']['worldZoom'])),
+                        'heroZoom' => max(0, settings_int_value($_POST['layout_desktop_hero_zoom'] ?? null, $dashboardLayoutConfig['deviceMapDefaults']['desktop']['heroZoom'])),
+                        'worldFollowTruck' => settings_checkbox_post('layout_desktop_world_follow_truck'),
+                        'heroFollowTruck' => settings_checkbox_post('layout_desktop_hero_follow_truck'),
+                    ],
+                    'tablet' => [
+                        'worldZoom' => max(0, settings_int_value($_POST['layout_tablet_world_zoom'] ?? null, $dashboardLayoutConfig['deviceMapDefaults']['tablet']['worldZoom'])),
+                        'heroZoom' => max(0, settings_int_value($_POST['layout_tablet_hero_zoom'] ?? null, $dashboardLayoutConfig['deviceMapDefaults']['tablet']['heroZoom'])),
+                        'worldFollowTruck' => settings_checkbox_post('layout_tablet_world_follow_truck'),
+                        'heroFollowTruck' => settings_checkbox_post('layout_tablet_hero_follow_truck'),
+                    ],
+                    'mobile' => [
+                        'worldZoom' => max(0, settings_int_value($_POST['layout_mobile_world_zoom'] ?? null, $dashboardLayoutConfig['deviceMapDefaults']['mobile']['worldZoom'])),
+                        'heroZoom' => max(0, settings_int_value($_POST['layout_mobile_hero_zoom'] ?? null, $dashboardLayoutConfig['deviceMapDefaults']['mobile']['heroZoom'])),
+                        'worldFollowTruck' => settings_checkbox_post('layout_mobile_world_follow_truck'),
+                        'heroFollowTruck' => settings_checkbox_post('layout_mobile_hero_follow_truck'),
+                    ],
+                ],
+                'overlayPlacement' => [
+                    'routePanel' => settings_normalize_placement($_POST['layout_route_panel_placement'] ?? null, $dashboardLayoutConfig['overlayPlacement']['routePanel']),
+                    'telemetryWidgets' => settings_normalize_placement($_POST['layout_telemetry_widgets_placement'] ?? null, $dashboardLayoutConfig['overlayPlacement']['telemetryWidgets']),
+                    'mapJobOverlay' => settings_normalize_placement($_POST['layout_map_job_overlay_placement'] ?? null, $dashboardLayoutConfig['overlayPlacement']['mapJobOverlay']),
+                ],
+                'mobileTuning' => [
+                    'compactWidgets' => settings_checkbox_post('layout_mobile_compact_widgets'),
+                    'hideMapShortcuts' => settings_checkbox_post('layout_mobile_hide_map_shortcuts'),
+                    'preferBottomToolbar' => settings_checkbox_post('layout_mobile_prefer_bottom_toolbar'),
+                ],
+            ],
             'mapDefaults' => [
                 'worldZoom' => max(0, settings_int_value($_POST['frontend_map_default_world_zoom'] ?? null, $mapDefaultsConfig['worldZoom'])),
                 'worldFollowTruck' => settings_checkbox_post('frontend_map_default_world_follow_truck'),
@@ -598,6 +922,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'storageKeys' => [
                     'activeTab' => trim((string) ($_POST['frontend_storage_key_active_tab'] ?? $frontendConfig['storageKeys']['activeTab'])),
                     'mapPreferences' => trim((string) ($_POST['frontend_storage_key_map_preferences'] ?? $frontendConfig['storageKeys']['mapPreferences'])),
+                    'dashboardWidgets' => trim((string) ($_POST['frontend_storage_key_dashboard_widgets'] ?? $frontendConfig['storageKeys']['dashboardWidgets'])),
                 ],
                 'mapTiles' => [
                     'baseUrlCandidates' => settings_normalize_string_array((string) ($_POST['frontend_map_tiles_base_urls'] ?? ''), $frontendConfig['mapTiles']['baseUrlCandidates']),
@@ -630,6 +955,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         if ($formData['frontend']['telemetryEndpoint'] === '') {
             $errors[] = 'Frontend telemetry endpoint cannot be empty.';
+        }
+
+        if ($formData['frontend']['storageKeys']['dashboardWidgets'] === '') {
+            $errors[] = 'Widget visibility storage key cannot be empty.';
         }
 
         if ($formData['snapshots']['directory'] === '') {
@@ -697,6 +1026,21 @@ if (isset($_GET['imported']) && $_GET['imported'] === '1') {
     $flashType = 'success';
 }
 
+if (isset($_GET['snapshot'])) {
+    $snapshotCount = max(0, settings_int_value($_GET['count'] ?? null, 0));
+    $flashType = 'success';
+    $flash = match ((string) $_GET['snapshot']) {
+        'deleted' => 'Snapshot file was deleted.',
+        'pruned' => 'Snapshot cleanup finished. Deleted ' . $snapshotCount . ' old file' . ($snapshotCount === 1 ? '.' : 's.'),
+        'deleted_scope' => 'Snapshot archive cleanup finished. Deleted ' . $snapshotCount . ' file' . ($snapshotCount === 1 ? '.' : 's.'),
+        'state_reset' => 'Snapshot runtime state was reset. Removed ' . $snapshotCount . ' state file' . ($snapshotCount === 1 ? '.' : 's.'),
+        default => null,
+    };
+    if ($flash === null) {
+        $flashType = null;
+    }
+}
+
 if ($errors !== []) {
     $flash = implode(' ', $errors);
     $flashType = 'error';
@@ -706,20 +1050,26 @@ if ($errors !== []) {
 }
 
 $snapshotState = settings_read_json_file($formData['snapshots']['stateFile']);
-$snapshotFiles = [];
-if (is_dir($formData['snapshots']['directory'])) {
-    $snapshotFiles = glob(rtrim($formData['snapshots']['directory'], '/\\') . DIRECTORY_SEPARATOR . '*.json') ?: [];
-    usort($snapshotFiles, static fn (string $a, string $b): int => (filemtime($b) ?: 0) <=> (filemtime($a) ?: 0));
-}
+$atsSnapshotState = settings_read_json_file($formData['snapshots']['atsStateFile']);
+$snapshotFiles = settings_collect_snapshot_files($formData['snapshots']);
+$snapshotSources = settings_snapshot_sources($formData['snapshots']);
 $snapshotFileCount = count($snapshotFiles);
-$recentSnapshotFiles = array_slice($snapshotFiles, 0, 8);
+$recentSnapshotFiles = array_slice($snapshotFiles, 0, 12);
+$snapshotTotalBytes = array_sum(array_map(static fn (array $snapshotFile): int => (int) $snapshotFile['size'], $snapshotFiles));
+$snapshotSourceStats = [
+    'ets2' => settings_snapshot_scope_stats($snapshotFiles, 'ets2'),
+    'ats' => settings_snapshot_scope_stats($snapshotFiles, 'ats'),
+];
 $lastSnapshotAtMs = (int) ($snapshotState['lastSnapshotAtMs'] ?? 0);
 $lastSnapshotFile = (string) ($snapshotState['lastSnapshotFile'] ?? '');
+$lastAtsSnapshotAtMs = (int) ($atsSnapshotState['lastSnapshotAtMs'] ?? 0);
+$lastAtsSnapshotFile = (string) ($atsSnapshotState['lastSnapshotFile'] ?? '');
 $managedConfig = settings_build_managed_config($formData);
 $configPreview = settings_export_local_config($managedConfig);
 $documentTitle = (string) ($formData['app']['pageTitle'] !== '' ? $formData['app']['pageTitle'] : $appTitle);
 $themeStyle = settings_build_theme_style($formData['design']);
 $lastSnapshotLabel = $lastSnapshotFile !== '' ? basename($lastSnapshotFile) : 'No snapshots written yet';
+$lastAtsSnapshotLabel = $lastAtsSnapshotFile !== '' ? basename($lastAtsSnapshotFile) : 'No ATS snapshots written yet';
 $snapshotFilenamePreview = settings_build_snapshot_filename_preview($formData['snapshots']);
 $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time());
 ?>
@@ -1059,6 +1409,92 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                                 <span class="hint">Local storage key for zoom, follow, and map view preferences.</span>
                             </div>
                             <div class="field">
+                                <label for="frontend-storage-key-dashboard-widgets">Widget visibility key</label>
+                                <input id="frontend-storage-key-dashboard-widgets" name="frontend_storage_key_dashboard_widgets" type="text" value="<?php echo htmlspecialchars($formData['frontend']['storageKeys']['dashboardWidgets'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <span class="hint">Local storage key used to remember whether telemetry insight widgets are visible.</span>
+                            </div>
+                            <div class="field">
+                                <label for="layout-route-panel-placement">Route panel placement</label>
+                                <select id="layout-route-panel-placement" name="layout_route_panel_placement">
+                                    <option value="left" <?php echo $formData['dashboardLayout']['overlayPlacement']['routePanel'] === 'left' ? 'selected' : ''; ?>>Left</option>
+                                    <option value="right" <?php echo $formData['dashboardLayout']['overlayPlacement']['routePanel'] === 'right' ? 'selected' : ''; ?>>Right</option>
+                                </select>
+                                <span class="hint">Moves the compact route overlay on the hero map.</span>
+                            </div>
+                            <div class="field">
+                                <label for="layout-telemetry-widgets-placement">Widget placement</label>
+                                <select id="layout-telemetry-widgets-placement" name="layout_telemetry_widgets_placement">
+                                    <option value="left" <?php echo $formData['dashboardLayout']['overlayPlacement']['telemetryWidgets'] === 'left' ? 'selected' : ''; ?>>Left</option>
+                                    <option value="right" <?php echo $formData['dashboardLayout']['overlayPlacement']['telemetryWidgets'] === 'right' ? 'selected' : ''; ?>>Right</option>
+                                </select>
+                                <span class="hint">Places the optional telemetry insight widgets on the hero map.</span>
+                            </div>
+                            <div class="field">
+                                <label for="layout-map-job-overlay-placement">Map job overlay placement</label>
+                                <select id="layout-map-job-overlay-placement" name="layout_map_job_overlay_placement">
+                                    <option value="left" <?php echo $formData['dashboardLayout']['overlayPlacement']['mapJobOverlay'] === 'left' ? 'selected' : ''; ?>>Left</option>
+                                    <option value="right" <?php echo $formData['dashboardLayout']['overlayPlacement']['mapJobOverlay'] === 'right' ? 'selected' : ''; ?>>Right</option>
+                                </select>
+                                <span class="hint">Moves the income, cargo, and weight overlay inside the map.</span>
+                            </div>
+                            <div class="field full">
+                                <span class="toggle-title">Per-device map defaults</span>
+                                <div class="device-defaults">
+                                    <?php foreach (['desktop' => 'Desktop', 'tablet' => 'Tablet', 'mobile' => 'Mobile'] as $profileKey => $profileLabel): ?>
+                                        <article class="device-default-card">
+                                            <strong><?php echo htmlspecialchars($profileLabel, ENT_QUOTES, 'UTF-8'); ?></strong>
+                                            <label>
+                                                <span>World zoom</span>
+                                                <input name="layout_<?php echo htmlspecialchars($profileKey, ENT_QUOTES, 'UTF-8'); ?>_world_zoom" type="number" min="0" step="1" value="<?php echo htmlspecialchars((string) $formData['dashboardLayout']['deviceMapDefaults'][$profileKey]['worldZoom'], ENT_QUOTES, 'UTF-8'); ?>">
+                                            </label>
+                                            <label>
+                                                <span>Hero zoom</span>
+                                                <input name="layout_<?php echo htmlspecialchars($profileKey, ENT_QUOTES, 'UTF-8'); ?>_hero_zoom" type="number" min="0" step="1" value="<?php echo htmlspecialchars((string) $formData['dashboardLayout']['deviceMapDefaults'][$profileKey]['heroZoom'], ENT_QUOTES, 'UTF-8'); ?>">
+                                            </label>
+                                            <label class="inline-check">
+                                                <input type="checkbox" name="layout_<?php echo htmlspecialchars($profileKey, ENT_QUOTES, 'UTF-8'); ?>_world_follow_truck" value="1" <?php echo $formData['dashboardLayout']['deviceMapDefaults'][$profileKey]['worldFollowTruck'] ? 'checked' : ''; ?>>
+                                                <span>World follows truck</span>
+                                            </label>
+                                            <label class="inline-check">
+                                                <input type="checkbox" name="layout_<?php echo htmlspecialchars($profileKey, ENT_QUOTES, 'UTF-8'); ?>_hero_follow_truck" value="1" <?php echo $formData['dashboardLayout']['deviceMapDefaults'][$profileKey]['heroFollowTruck'] ? 'checked' : ''; ?>>
+                                                <span>Hero follows truck</span>
+                                            </label>
+                                        </article>
+                                    <?php endforeach; ?>
+                                </div>
+                                <span class="hint">These defaults are used before a browser has saved its own map preferences.</span>
+                            </div>
+                            <div class="toggle-card">
+                                <div class="toggle-copy">
+                                    <span class="toggle-title">Compact mobile widgets</span>
+                                    <span>Stacks the telemetry insight widgets in a narrower mobile overlay.</span>
+                                </div>
+                                <label class="switch" aria-label="Compact mobile widgets">
+                                    <input type="checkbox" name="layout_mobile_compact_widgets" value="1" <?php echo $formData['dashboardLayout']['mobileTuning']['compactWidgets'] ? 'checked' : ''; ?>>
+                                    <span class="track"></span>
+                                </label>
+                            </div>
+                            <div class="toggle-card">
+                                <div class="toggle-copy">
+                                    <span class="toggle-title">Hide mobile map shortcuts</span>
+                                    <span>Removes the shortcut hint row from the mobile map toolbar.</span>
+                                </div>
+                                <label class="switch" aria-label="Hide mobile map shortcuts">
+                                    <input type="checkbox" name="layout_mobile_hide_map_shortcuts" value="1" <?php echo $formData['dashboardLayout']['mobileTuning']['hideMapShortcuts'] ? 'checked' : ''; ?>>
+                                    <span class="track"></span>
+                                </label>
+                            </div>
+                            <div class="toggle-card">
+                                <div class="toggle-copy">
+                                    <span class="toggle-title">Prefer bottom mobile toolbar</span>
+                                    <span>Keeps map controls near the bottom edge on smaller screens.</span>
+                                </div>
+                                <label class="switch" aria-label="Prefer bottom mobile toolbar">
+                                    <input type="checkbox" name="layout_mobile_prefer_bottom_toolbar" value="1" <?php echo $formData['dashboardLayout']['mobileTuning']['preferBottomToolbar'] ? 'checked' : ''; ?>>
+                                    <span class="track"></span>
+                                </label>
+                            </div>
+                            <div class="field">
                                 <label for="telemetry-polling-backoff-step-ms">Polling backoff step</label>
                                 <input id="telemetry-polling-backoff-step-ms" name="telemetry_polling_backoff_step_ms" type="number" min="0" step="100" value="<?php echo htmlspecialchars((string) $formData['telemetryPolling']['backoffStepMs'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <span class="hint">How much retry delay increases after a failed fetch.</span>
@@ -1346,8 +1782,13 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                             <div class="row"><strong>Timestamp format</strong><span><code><?php echo htmlspecialchars($formData['snapshots']['timestampFormat'], ENT_QUOTES, 'UTF-8'); ?></code></span></div>
                             <div class="row"><strong>Filename preview</strong><span><?php echo htmlspecialchars($snapshotFilenamePreview, ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Total files</strong><span><?php echo htmlspecialchars((string) $snapshotFileCount, ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>Total size</strong><span><?php echo htmlspecialchars(settings_format_bytes((int) $snapshotTotalBytes), ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>ETS2 files</strong><span><?php echo htmlspecialchars((string) $snapshotSourceStats['ets2']['count'], ENT_QUOTES, 'UTF-8'); ?> files • <?php echo htmlspecialchars(settings_format_bytes((int) $snapshotSourceStats['ets2']['bytes']), ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>ATS files</strong><span><?php echo htmlspecialchars((string) $snapshotSourceStats['ats']['count'], ENT_QUOTES, 'UTF-8'); ?> files • <?php echo htmlspecialchars(settings_format_bytes((int) $snapshotSourceStats['ats']['bytes']), ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Last snapshot</strong><span><?php echo htmlspecialchars(settings_format_datetime_ms($lastSnapshotAtMs), ENT_QUOTES, 'UTF-8'); ?></span></div>
                             <div class="row"><strong>Last file</strong><span><?php echo htmlspecialchars($lastSnapshotLabel, ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>Last ATS snapshot</strong><span><?php echo htmlspecialchars(settings_format_datetime_ms($lastAtsSnapshotAtMs), ENT_QUOTES, 'UTF-8'); ?></span></div>
+                            <div class="row"><strong>Last ATS file</strong><span><?php echo htmlspecialchars($lastAtsSnapshotLabel, ENT_QUOTES, 'UTF-8'); ?></span></div>
                         </div>
                         <div class="note">Snapshot creation happens inside the PHP telemetry pipeline, so files appear when telemetry is actually being served.</div>
                     </section>
@@ -1356,18 +1797,65 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                 <section class="panel panel-spaced">
                     <div class="head">
                         <div>
+                            <p class="eyebrow">Management</p>
+                            <h2>Snapshot Archive</h2>
+                        </div>
+                        <span class="badge"><?php echo htmlspecialchars(settings_format_bytes((int) $snapshotTotalBytes), ENT_QUOTES, 'UTF-8'); ?></span>
+                    </div>
+                    <div class="snapshot-manager">
+                        <?php foreach ($snapshotSources as $scope => $source): ?>
+                            <?php $sourceStats = $snapshotSourceStats[$scope]; ?>
+                            <article class="snapshot-source">
+                                <div>
+                                    <strong><?php echo htmlspecialchars((string) $source['label'], ENT_QUOTES, 'UTF-8'); ?></strong>
+                                    <span class="meta"><?php echo htmlspecialchars((string) $source['directory'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                </div>
+                                <div class="snapshot-source-metrics">
+                                    <span><?php echo htmlspecialchars((string) $sourceStats['count'], ENT_QUOTES, 'UTF-8'); ?> files</span>
+                                    <span><?php echo htmlspecialchars(settings_format_bytes((int) $sourceStats['bytes']), ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <span>Latest <?php echo htmlspecialchars($sourceStats['latestMtime'] > 0 ? date('Y-m-d H:i:s', (int) $sourceStats['latestMtime']) : 'Never', ENT_QUOTES, 'UTF-8'); ?></span>
+                                </div>
+                                <div class="button-cluster">
+                                    <button class="button-secondary" type="submit" name="settings_action" value="snapshot_prune_<?php echo htmlspecialchars((string) $scope, ENT_QUOTES, 'UTF-8'); ?>">Keep Latest 20</button>
+                                    <button class="button-secondary danger" type="submit" name="settings_action" value="snapshot_delete_scope_<?php echo htmlspecialchars((string) $scope, ENT_QUOTES, 'UTF-8'); ?>" data-confirm="Delete all <?php echo htmlspecialchars((string) $source['label'], ENT_QUOTES, 'UTF-8'); ?> snapshot files?">Delete Files</button>
+                                    <button class="button-secondary" type="submit" name="settings_action" value="snapshot_reset_state_<?php echo htmlspecialchars((string) $scope, ENT_QUOTES, 'UTF-8'); ?>">Reset State</button>
+                                </div>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="actions snapshot-actions">
+                        <p>Cleanup actions affect only JSON files discovered under the configured snapshot directories. Resetting state lets the telemetry pipeline write a fresh snapshot on the next eligible payload.</p>
+                        <div class="button-cluster">
+                            <button class="button-secondary" type="submit" name="settings_action" value="snapshot_prune_all">Keep Latest 20 Each</button>
+                            <button class="button-secondary danger" type="submit" name="settings_action" value="snapshot_delete_scope_all" data-confirm="Delete all ETS2 and ATS snapshot files?">Delete All Files</button>
+                            <button class="button-secondary" type="submit" name="settings_action" value="snapshot_reset_state_all">Reset All State</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel panel-spaced">
+                    <div class="head">
+                        <div>
                             <p class="eyebrow">Recent Output</p>
                             <h2>Latest Snapshot Files</h2>
                         </div>
+                        <span class="badge"><?php echo htmlspecialchars((string) count($recentSnapshotFiles), ENT_QUOTES, 'UTF-8'); ?> shown</span>
                     </div>
                     <?php if ($recentSnapshotFiles === []): ?>
-                        <div class="empty">No snapshot files were found in the configured directory yet. Once snapshots are enabled and telemetry is being served, the latest archive files will appear here.</div>
+                        <div class="empty">No snapshot files were found in the configured ETS2 or ATS directories yet. Once snapshots are enabled and telemetry is being served, the latest archive files will appear here.</div>
                     <?php else: ?>
                         <div class="files">
                             <?php foreach ($recentSnapshotFiles as $snapshotFile): ?>
                                 <article class="file">
-                                    <strong><?php echo htmlspecialchars(basename($snapshotFile), ENT_QUOTES, 'UTF-8'); ?></strong>
-                                    <span class="meta"><?php echo htmlspecialchars($snapshotFile, ENT_QUOTES, 'UTF-8'); ?><br><?php echo htmlspecialchars((string) filesize($snapshotFile), ENT_QUOTES, 'UTF-8'); ?> bytes • <?php echo htmlspecialchars(date('Y-m-d H:i:s', (int) (filemtime($snapshotFile) ?: time())), ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <div class="file-main">
+                                        <span class="badge"><?php echo htmlspecialchars((string) $snapshotFile['label'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <strong><?php echo htmlspecialchars((string) $snapshotFile['name'], ENT_QUOTES, 'UTF-8'); ?></strong>
+                                        <span class="meta"><?php echo htmlspecialchars((string) $snapshotFile['path'], ENT_QUOTES, 'UTF-8'); ?><br><?php echo htmlspecialchars(settings_format_bytes((int) $snapshotFile['size']), ENT_QUOTES, 'UTF-8'); ?> • <?php echo htmlspecialchars(date('Y-m-d H:i:s', (int) $snapshotFile['mtime']), ENT_QUOTES, 'UTF-8'); ?></span>
+                                    </div>
+                                    <div class="button-cluster file-actions">
+                                        <a class="button-secondary" href="settings.php?snapshot_download=<?php echo htmlspecialchars((string) $snapshotFile['token'], ENT_QUOTES, 'UTF-8'); ?>">Download</a>
+                                        <button class="button-secondary danger" type="submit" name="settings_action" value="snapshot_delete_file_<?php echo htmlspecialchars((string) $snapshotFile['token'], ENT_QUOTES, 'UTF-8'); ?>" data-confirm="Delete <?php echo htmlspecialchars((string) $snapshotFile['name'], ENT_QUOTES, 'UTF-8'); ?>?">Delete</button>
+                                    </div>
                                 </article>
                             <?php endforeach; ?>
                         </div>
@@ -1420,7 +1908,7 @@ $settingsCssVersion = (string) (@filemtime(__DIR__ . '/settings.css') ?: time())
                             </div>
                         </div>
                         <pre><?php echo htmlspecialchars($configPreview, ENT_QUOTES, 'UTF-8'); ?></pre>
-                        <div class="note">Saving here updates <code>app</code>, <code>design</code>, <code>telemetry</code>, <code>snapshots</code>, <code>frontend.telemetryEndpoint</code>, <code>frontend.popupEvents</code>, <code>frontend.storageKeys</code>, <code>frontend.telemetryPolling</code>, <code>frontend.playersRefreshMs</code>, <code>frontend.playersRadiusDefault</code>, <code>frontend.playersServerDefault</code>, <code>frontend.routePlanner</code>, <code>frontend.speedRing</code>, <code>frontend.mapDefaults</code>, <code>frontend.mapBounds</code>, and <code>frontend.mapTiles</code> in <code>config.local.php</code>. Other local config keys are preserved.</div>
+                        <div class="note">Saving here updates <code>app</code>, <code>design</code>, <code>telemetry</code>, <code>snapshots</code>, <code>frontend.telemetryEndpoint</code>, <code>frontend.popupEvents</code>, <code>frontend.storageKeys</code>, <code>frontend.telemetryPolling</code>, <code>frontend.playersRefreshMs</code>, <code>frontend.playersRadiusDefault</code>, <code>frontend.playersServerDefault</code>, <code>frontend.routePlanner</code>, <code>frontend.speedRing</code>, <code>frontend.dashboardLayout</code>, <code>frontend.mapDefaults</code>, <code>frontend.mapBounds</code>, and <code>frontend.mapTiles</code> in <code>config.local.php</code>. Other local config keys are preserved.</div>
                     </section>
                 </div>
             </section>
